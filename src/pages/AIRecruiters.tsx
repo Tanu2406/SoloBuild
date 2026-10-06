@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, Bot, Search, X, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Pencil, Trash2, Bot, Search, X, Loader2, LockKeyhole } from 'lucide-react';
 import { PageHeader } from '../components/ui/Layout';
 import { Button } from '../components/ui/Button';
 import { Input, Textarea, Select } from '../components/ui/Input';
@@ -69,8 +69,12 @@ const styleLabel: Record<string, string> = {
 const AIRecruiters: React.FC = () => {
   const { showToast } = useToast();
   const { dispatch } = useAppStore();
-  const recruiters = useRecruiters();
+  const storedRecruiters = useRecruiters();
+  const storedRecruitersRef = useRef(storedRecruiters);
 
+  const [recruiters, setRecruiters] = useState<AIRecruiter[]>([]);
+  const [loadingRecruiters, setLoadingRecruiters] = useState(true);
+  const [recruiterLoadError, setRecruiterLoadError] = useState('');
   const [editingRecruiter, setEditingRecruiter] = useState<AIRecruiter | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<RecruiterForm>(defaultForm);
@@ -85,33 +89,54 @@ const AIRecruiters: React.FC = () => {
 
   // ——— Load agents from API on mount, sync into local store ———
   useEffect(() => {
-    listAgents()
-      .then(agents => {
-        agents.forEach(a => {
-          const langs = LANG_ARRAY_FROM_API[a.languages] ?? ['English'];
-          const existing = recruiters.find(r => r.id === a.id);
-          const recruiterData: AIRecruiter = {
-            id: a.id,
-            name: a.name,
-            description: `${a.conversation_style} tone.`,
-            languages: langs,
-            voice: a.voice,
-            conversationStyle: a.conversation_style,
-            interviewInstructions: a.interview_instruction,
-            avatarInitial: a.name[0]?.toUpperCase() ?? 'A',
+    let cancelled = false;
+    const loadAgents = async () => {
+      setLoadingRecruiters(true);
+      setRecruiterLoadError('');
+      try {
+        const agents = await listAgents();
+        if (cancelled) return;
+        const mappedAgents = agents.map(agent => {
+          const existing = storedRecruitersRef.current.find(recruiter => recruiter.id === agent.id);
+          const recruiter: AIRecruiter = {
+            id: agent.id,
+            name: agent.name,
+            isPreset: agent.is_preset,
+            description: `${agent.conversation_style} tone.`,
+            languages: LANG_ARRAY_FROM_API[agent.languages] ?? ['English'],
+            voice: agent.voice,
+            conversationStyle: agent.conversation_style,
+            interviewInstructions: agent.interview_instruction,
+            avatarInitial: agent.name[0]?.toUpperCase() ?? 'A',
             avatarColor: existing?.avatarColor ?? AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
           };
-          if (existing) {
-            dispatch({ type: 'UPDATE_RECRUITER', payload: { id: a.id, updates: recruiterData } });
-          } else {
-            dispatch({ type: 'CREATE_RECRUITER', payload: recruiterData });
-          }
+          dispatch(existing
+            ? { type: 'UPDATE_RECRUITER', payload: { id: agent.id, updates: recruiter } }
+            : { type: 'CREATE_RECRUITER', payload: recruiter });
+          return recruiter;
         });
-      })
-      .catch(() => { /* backend offline — use local store seed data */ });
-  // Only run on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+        setRecruiters(mappedAgents);
+      } catch (error) {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : 'Failed to load AI recruiters.';
+        setRecruiterLoadError(message);
+      } finally {
+        if (!cancelled) setLoadingRecruiters(false);
+      }
+    };
+    void loadAgents();
+    return () => { cancelled = true; };
+  }, [dispatch]);
+
+  const syncRecruiter = (recruiter: AIRecruiter) => {
+    setRecruiters(current => current.some(item => item.id === recruiter.id)
+      ? current.map(item => item.id === recruiter.id ? recruiter : item)
+      : [...current, recruiter]);
+  };
+
+  const removeRecruiter = (recruiterId: string) => {
+    setRecruiters(current => current.filter(recruiter => recruiter.id !== recruiterId));
+  };
 
   const openCreate = () => {
     setEditingRecruiter(null);
@@ -121,6 +146,7 @@ const AIRecruiters: React.FC = () => {
   };
 
   const openEdit = (r: AIRecruiter) => {
+    if (r.isPreset) return;
     setEditingRecruiter(r);
     // Map back from recruiter to form values
     const langKey = Object.entries(langMap).find(([, v]) => v.join(',') === r.languages.join(','))?.[0] || 'english_hindi';
@@ -137,6 +163,10 @@ const AIRecruiters: React.FC = () => {
   };
 
   const handleSave = async () => {
+    if (editingRecruiter?.isPreset) {
+      showToast('Default AI recruiters cannot be modified.', 'error');
+      return;
+    }
     const e: Partial<RecruiterForm> = {};
     if (!form.name.trim()) e.name = 'Name is required';
     if (!form.interviewInstructions.trim()) e.interviewInstructions = 'Interview instructions are required';
@@ -158,21 +188,18 @@ const AIRecruiters: React.FC = () => {
           voice: apiVoice,
           interview_instruction: form.interviewInstructions.trim(),
         });
-        dispatch({
-          type: 'UPDATE_RECRUITER',
-          payload: {
-            id: editingRecruiter.id,
-            updates: {
-              name: updated.name,
-              conversationStyle: updated.conversation_style,
-              languages: LANG_ARRAY_FROM_API[updated.languages] ?? ['English'],
-              voice: updated.voice,
-              interviewInstructions: updated.interview_instruction,
-              description: `${updated.conversation_style} tone.`,
-              avatarInitial: updated.name[0]?.toUpperCase() ?? 'A',
-            },
-          },
-        });
+        const updatedRecruiter: AIRecruiter = {
+          ...editingRecruiter,
+          name: updated.name,
+          conversationStyle: updated.conversation_style,
+          languages: LANG_ARRAY_FROM_API[updated.languages] ?? ['English'],
+          voice: updated.voice,
+          interviewInstructions: updated.interview_instruction,
+          description: `${updated.conversation_style} tone.`,
+          avatarInitial: updated.name[0]?.toUpperCase() ?? 'A',
+        };
+        syncRecruiter(updatedRecruiter);
+        dispatch({ type: 'UPDATE_RECRUITER', payload: { id: editingRecruiter.id, updates: updatedRecruiter } });
         showToast(`${updated.name} updated`, 'success');
       } else {
         // ——— Create new agent via API ———
@@ -186,6 +213,7 @@ const AIRecruiters: React.FC = () => {
         const newRecruiter: AIRecruiter = {
           id: created.id,
           name: created.name,
+          isPreset: created.is_preset === true,
           description: `${created.conversation_style} tone.`,
           languages: LANG_ARRAY_FROM_API[created.languages] ?? ['English'],
           voice: created.voice,
@@ -194,6 +222,7 @@ const AIRecruiters: React.FC = () => {
           avatarInitial: created.name[0]?.toUpperCase() ?? 'A',
           avatarColor: AVATAR_COLORS[recruiters.length % AVATAR_COLORS.length],
         };
+        syncRecruiter(newRecruiter);
         dispatch({ type: 'CREATE_RECRUITER', payload: newRecruiter });
         showToast(`AI Recruiter "${created.name}" created`, 'success');
       }
@@ -207,10 +236,15 @@ const AIRecruiters: React.FC = () => {
   };
 
   const handleDelete = async (r: AIRecruiter) => {
+    if (r.isPreset) {
+      showToast('Default AI recruiters cannot be deleted.', 'error');
+      return;
+    }
     if (!confirm(`Delete AI Recruiter "${r.name}"? This cannot be undone.`)) return;
     setDeletingId(r.id);
     try {
       await deleteAgent(r.id);
+      removeRecruiter(r.id);
       dispatch({ type: 'DELETE_RECRUITER', payload: r.id });
       showToast(`${r.name} deleted`, 'info');
     } catch (err: unknown) {
@@ -260,7 +294,17 @@ const AIRecruiters: React.FC = () => {
         }
       />
 
-      {recruiters.length === 0 ? (
+      {recruiterLoadError && (
+        <div role="alert" style={{ marginBottom: '16px', color: 'var(--status-error-text)', fontSize: 'var(--font-size-sm)' }}>
+          AI recruiters could not be loaded: {recruiterLoadError}
+        </div>
+      )}
+
+      {loadingRecruiters ? (
+        <div role="status" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
+          <Loader2 size={16} className="spin" /> Loading AI recruiters…
+        </div>
+      ) : recruiterLoadError ? null : recruiters.length === 0 ? (
         <EmptyState
           icon={<Bot size={24} />}
           title="No AI Recruiters yet"
@@ -399,12 +443,26 @@ const AIRecruiters: React.FC = () => {
                     <div className="rdc__identity">
                       <Avatar name={recruiter.name} size="lg" color={recruiter.avatarColor} />
                       <div className="rdc__info">
-                        <h3 className="rdc__name">{recruiter.name}</h3>
+                        <h3 className="rdc__name">
+                          {recruiter.name}
+                          {recruiter.isPreset && (
+                            <span style={{ marginLeft: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>
+                              <LockKeyhole size={12} /> Default
+                            </span>
+                          )}
+                        </h3>
                         <p className="rdc__desc">{recruiter.description}</p>
                       </div>
                     </div>
                     <div className="rdc__actions">
-                      <Button variant="ghost" size="sm" icon={<Pencil size={14} />} onClick={() => openEdit(recruiter)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={<Pencil size={14} />}
+                        onClick={() => openEdit(recruiter)}
+                        disabled={recruiter.isPreset || !!deletingId}
+                        title={recruiter.isPreset ? 'Default recruiters cannot be modified.' : 'Edit recruiter'}
+                      >
                         Edit
                       </Button>
                       <Button
@@ -412,7 +470,9 @@ const AIRecruiters: React.FC = () => {
                         size="sm"
                         icon={deletingId === recruiter.id ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
                         onClick={() => handleDelete(recruiter)}
-                        disabled={!!deletingId}
+                        disabled={recruiter.isPreset || !!deletingId}
+                        title={recruiter.isPreset ? 'Default recruiters cannot be deleted.' : `Delete ${recruiter.name}`}
+                        aria-label={`Delete ${recruiter.name}`}
                       />
                     </div>
                   </div>
@@ -489,4 +549,3 @@ const AIRecruiters: React.FC = () => {
 };
 
 export default AIRecruiters;
-

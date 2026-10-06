@@ -1,16 +1,22 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Users, Download, CheckCircle2,
+  Users, Download, CheckCircle2, Loader2,
   Filter, X, Star
 } from 'lucide-react';
 import { PageHeader } from '../components/ui/Layout';
 import { Button } from '../components/ui/Button';
-import { CandidateStatusBadge } from '../components/ui/Badge';
+import { Badge, CandidateStatusBadge } from '../components/ui/Badge';
 import { Avatar } from '../components/ui/Avatar';
 import { DataTable, type Column } from '../components/ui/DataTable';
 import { CandidateDrawer } from '../components/product/CandidateDrawer';
 import { DialerModal } from '../components/product/DialerModal';
 import { useAppStore, useCandidates, useHirings } from '../store/appStore';
+import {
+  listCampaignCandidates,
+  listCampaignDocumentScreenings,
+  listCampaigns,
+  mapCampaignCandidate,
+} from '../services/campaignService';
 import { useToast } from '../components/ui/Toast';
 import type { Candidate } from '../types';
 
@@ -19,12 +25,92 @@ const Candidates: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
   const { showToast } = useToast();
   const candidates = useCandidates();
   const hirings = useHirings();
+  const hiringsRef = useRef(hirings);
+  useEffect(() => { hiringsRef.current = hirings; }, [hirings]);
 
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [selectedHiringId, setSelectedHiringId] = useState<string>('all');
   const [callStatusFilter, setCallStatusFilter] = useState<string>('all');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [loadingCampaignCandidates, setLoadingCampaignCandidates] = useState(true);
+  const [campaignsLoadedFromApi, setCampaignsLoadedFromApi] = useState(false);
+  const [campaignLoadError, setCampaignLoadError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCampaignCandidates = async () => {
+      const campaigns = await listCampaigns();
+      const campaignResults = await Promise.all(campaigns.map(async campaign => {
+        const [candidateResult, screeningResult] = await Promise.allSettled([
+          listCampaignCandidates(campaign.id),
+          listCampaignDocumentScreenings(campaign.id),
+        ]);
+        return { campaign, candidateResult, screeningResult };
+      }));
+      if (cancelled) return;
+
+      const warnings: string[] = [];
+      for (const { campaign, candidateResult, screeningResult } of campaignResults) {
+        const existing = hiringsRef.current.find(hiring => hiring.id === campaign.id);
+        const screenings = screeningResult.status === 'fulfilled' ? screeningResult.value : [];
+        const hiring = {
+          ...(existing ?? {
+            id: campaign.id,
+            title: campaign.title,
+            status: 'screening' as const,
+            location: '—',
+            employmentType: 'full_time' as const,
+            candidateCount: 0,
+            contacted: 0,
+            connected: 0,
+            interested: 0,
+            shortlisted: 0,
+            candidateIds: [],
+            createdAt: campaign.created_at,
+            updatedAt: campaign.updated_at,
+          }),
+          id: campaign.id,
+          title: campaign.title,
+          status: screenings.some(result => result.match_score !== null) ? 'screened' as const : 'screening' as const,
+          backendCampaign: true,
+          updatedAt: campaign.updated_at || campaign.created_at,
+        };
+        dispatch(existing
+          ? { type: 'UPDATE_HIRING', payload: { id: campaign.id, updates: hiring } }
+          : { type: 'CREATE_HIRING', payload: hiring });
+
+        if (candidateResult.status === 'rejected') {
+          warnings.push(candidateResult.reason instanceof Error
+            ? `${campaign.title}: candidates could not be loaded (${candidateResult.reason.message}).`
+            : `${campaign.title}: candidates could not be loaded.`);
+          continue;
+        }
+        if (screeningResult.status === 'rejected') {
+          warnings.push(screeningResult.reason instanceof Error
+            ? `${campaign.title}: screening results could not be loaded (${screeningResult.reason.message}).`
+            : `${campaign.title}: screening results could not be loaded.`);
+        }
+        const screeningByCandidateId = new Map(screenings.map(result => [result.candidate_id, result]));
+        const mappedCandidates = candidateResult.value.map(candidate =>
+          mapCampaignCandidate(candidate, screeningByCandidateId.get(candidate.id), campaign.title),
+        );
+        dispatch({
+          type: 'ADD_CANDIDATES',
+          payload: { hiringId: campaign.id, candidates: mappedCandidates },
+        });
+      }
+      setCampaignsLoadedFromApi(true);
+      setCampaignLoadError(warnings.join(' '));
+      setLoadingCampaignCandidates(false);
+    };
+    void loadCampaignCandidates().catch(error => {
+      if (cancelled) return;
+      setCampaignLoadError(error instanceof Error ? error.message : 'Failed to load campaign candidates.');
+      setLoadingCampaignCandidates(false);
+    });
+    return () => { cancelled = true; };
+  }, [dispatch]);
 
   // Drawer & Dialer states
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
@@ -67,13 +153,13 @@ const Candidates: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
   };
 
   const handleExportCSV = () => {
-    const exportData = candidates.filter(c => selectedIds.length === 0 || selectedIds.includes(c.id));
+    const exportData = directoryCandidates.filter(c => selectedIds.length === 0 || selectedIds.includes(c.id));
     const csvContent =
       'data:text/csv;charset=utf-8,' +
       ['Name,Phone,Email,Role,Status,Experience,Location,Call Duration,Summary']
         .concat(
           exportData.map(c =>
-            `"${c.name}","${c.phone}","${c.email || ''}","${c.hiringTitle || ''}","${c.status}","${c.experience || ''}","${c.location || ''}","${c.callDuration || ''}","${(c.aiSummary || '').replace(/"/g, '""')}"`
+              `"${c.name}","${c.phone}","${c.email || ''}","${c.hiringTitle || ''}","${c.backendCampaignCandidate ? c.workflowStepStatus || '' : c.status}","${c.experience || ''}","${c.location || ''}","${c.callDuration || ''}","${(c.aiSummary || '').replace(/"/g, '""')}"`
           )
         )
         .join('\n');
@@ -88,11 +174,26 @@ const Candidates: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
   };
 
   // Filtering
-  const filtered = candidates.filter(c => {
+  const directoryCandidates = campaignsLoadedFromApi
+    ? candidates.filter(candidate => candidate.backendCampaignCandidate)
+    : candidates;
+  const directoryHirings = campaignsLoadedFromApi
+    ? hirings.filter(hiring => hiring.backendCampaign)
+    : hirings;
+  const statusFilters = ['all', 'shortlisted', 'interested', 'connected', 'contacted', 'no_answer', 'added'];
+  if (directoryCandidates.some(candidate => candidate.backendCampaignCandidate)) {
+    statusFilters.push('pending', 'processing', 'completed', 'failed');
+  }
+  const getFilterStatus = (candidate: Candidate) =>
+    candidate.backendCampaignCandidate
+      ? candidate.workflowStepStatus?.toLowerCase() ?? 'pending'
+      : candidate.status;
+
+  const filtered = directoryCandidates.filter(c => {
     const matchesStatus =
       activeFilter === 'liked'
         ? !!c.isFavorite
-        : activeFilter === 'all' || c.status === activeFilter;
+        : activeFilter === 'all' || getFilterStatus(c) === activeFilter;
     const matchesHiring =
       selectedHiringId === 'all' ||
       c.hiringId === selectedHiringId;
@@ -110,6 +211,9 @@ const Candidates: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
       (c.location || '').toLowerCase().includes(q);
     return matchesStatus && matchesHiring && matchesCallStatus && matchesSearch;
   });
+  const selectedIncludesBackend = directoryCandidates.some(
+    candidate => selectedIds.includes(candidate.id) && candidate.backendCampaignCandidate,
+  );
 
   const columns: Column<Candidate>[] = [
     {
@@ -140,7 +244,11 @@ const Candidates: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
       key: 'status',
       header: 'Screening Status',
       sortable: true,
-      render: (c: Candidate) => <CandidateStatusBadge status={c.status} />,
+      render: (c: Candidate) => c.backendCampaignCandidate ? (
+        <Badge variant={c.workflowStepStatus === 'COMPLETED' ? 'success' : c.workflowStepStatus === 'FAILED' ? 'error' : c.workflowStepStatus === 'PROCESSING' ? 'info' : 'neutral'}>
+          {c.workflowStepStatus || c.workflowStep || 'Unavailable'}
+        </Badge>
+      ) : <CandidateStatusBadge status={c.status} />,
     },
     {
       key: 'experience',
@@ -148,11 +256,23 @@ const Candidates: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
       render: (c: Candidate) => c.experience || '—',
     },
     {
+      key: 'matchScore',
+      header: 'Resume Match',
+      sortable: true,
+      render: (c: Candidate) => (
+        <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)' }}>
+          {c.matchScore === undefined
+            ? c.backendCampaignCandidate ? 'Not scored' : '—'
+            : `${c.matchScore}%`}
+        </span>
+      ),
+    },
+    {
       key: 'callDuration',
       header: 'Call Duration',
       render: (c: Candidate) => (
         <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)' }}>
-          {c.callDuration || '—'}
+          {c.backendCampaignCandidate ? 'Unavailable' : c.callDuration || '—'}
         </span>
       ),
     },
@@ -161,7 +281,9 @@ const Candidates: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
       header: 'Last Activity',
       render: (c: Candidate) => (
         <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>
-          {c.lastActivity || '—'}
+          {c.backendCampaignCandidate
+            ? c.candidateUpdatedAt ? new Date(c.candidateUpdatedAt).toLocaleDateString() : '—'
+            : c.lastActivity || '—'}
         </span>
       ),
     },
@@ -221,6 +343,24 @@ const Candidates: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
         }
       />
 
+      {(loadingCampaignCandidates || campaignLoadError) && (
+        <div
+          role={campaignLoadError ? 'alert' : 'status'}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '10px 14px', marginBottom: '14px',
+            background: campaignLoadError ? 'var(--status-warning-bg)' : 'var(--bg-subtle)',
+            border: `1px solid ${campaignLoadError ? 'var(--status-warning-border)' : 'var(--border-default)'}`,
+            borderRadius: 'var(--radius-md)',
+            color: campaignLoadError ? 'var(--status-warning-text)' : 'var(--text-secondary)',
+            fontSize: 'var(--font-size-sm)',
+          }}
+        >
+          {loadingCampaignCandidates && <Loader2 size={14} className="spin" />}
+          {loadingCampaignCandidates ? 'Loading campaign candidates and screening results…' : campaignLoadError}
+        </div>
+      )}
+
       {/* Filter Row */}
       <div
         style={{
@@ -239,7 +379,7 @@ const Candidates: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
             <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
               <Filter size={12} /> Status:
             </span>
-            {['all', 'shortlisted', 'interested', 'connected', 'contacted', 'no_answer', 'added'].map(statusKey => (
+            {statusFilters.map(statusKey => (
               <button
                 key={statusKey}
                 onClick={() => setActiveFilter(statusKey)}
@@ -256,10 +396,10 @@ const Candidates: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
                   textTransform: 'capitalize',
                 }}
               >
-                {statusKey === 'added' ? 'Queued' : statusKey.replace('_', ' ')}
+                {statusKey === 'all' ? 'All' : statusKey === 'added' ? 'Queued' : statusKey.replace('_', ' ')}
                 {statusKey === 'all'
-                  ? ` (${candidates.length})`
-                  : ` (${candidates.filter(c => c.status === statusKey).length})`}
+                  ? ` (${directoryCandidates.length})`
+                  : ` (${directoryCandidates.filter(c => getFilterStatus(c) === statusKey).length})`}
               </button>
             ))}
             {/* Liked Profiles pill */}
@@ -284,39 +424,40 @@ const Candidates: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
                 strokeWidth={1.75}
                 style={{ color: activeFilter === 'liked' ? '#f59e0b' : 'var(--text-muted)' }}
               />
-              Liked Profiles ({candidates.filter(c => c.isFavorite).length})
+              Liked Profiles ({directoryCandidates.filter(c => c.isFavorite).length})
             </button>
           </div>
 
-          {/* Call status filter */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              Call:
-            </span>
-            {[
-              { key: 'all', label: 'All' },
-              { key: 'called', label: 'Called' },
-              { key: 'not_called', label: 'Not called yet' },
-            ].map(opt => (
-              <button
-                key={opt.key}
-                onClick={() => setCallStatusFilter(opt.key)}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: 'var(--radius-full)',
-                  fontSize: 'var(--font-size-xs)',
-                  fontWeight: 500,
-                  border: '1px solid',
-                  borderColor: callStatusFilter === opt.key ? 'var(--brand-primary)' : 'var(--border-default)',
-                  background: callStatusFilter === opt.key ? 'var(--brand-primary-light)' : 'var(--bg-white)',
-                  color: callStatusFilter === opt.key ? 'var(--brand-primary)' : 'var(--text-secondary)',
-                  cursor: 'pointer',
-                }}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+          {!campaignsLoadedFromApi && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Call:
+              </span>
+              {[
+                { key: 'all', label: 'All' },
+                { key: 'called', label: 'Called' },
+                { key: 'not_called', label: 'Not called yet' },
+              ].map(opt => (
+                <button
+                  key={opt.key}
+                  onClick={() => setCallStatusFilter(opt.key)}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 'var(--radius-full)',
+                    fontSize: 'var(--font-size-xs)',
+                    fontWeight: 500,
+                    border: '1px solid',
+                    borderColor: callStatusFilter === opt.key ? 'var(--brand-primary)' : 'var(--border-default)',
+                    background: callStatusFilter === opt.key ? 'var(--brand-primary-light)' : 'var(--bg-white)',
+                    color: callStatusFilter === opt.key ? 'var(--brand-primary)' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Right: Campaign filter + clear */}
@@ -335,8 +476,8 @@ const Candidates: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
             }}
             aria-label="Filter by hiring campaign"
           >
-            <option value="all">All Campaigns ({hirings.length})</option>
-            {hirings.map(h => (
+            <option value="all">All Campaigns ({directoryHirings.length})</option>
+            {directoryHirings.map(h => (
               <option key={h.id} value={h.id}>
                 {h.title} ({h.candidateCount})
               </option>
@@ -390,6 +531,8 @@ const Candidates: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
               size="sm"
               icon={<CheckCircle2 size={13} />}
               onClick={handleBulkShortlist}
+              disabled={selectedIncludesBackend}
+              title={selectedIncludesBackend ? 'Shortlisting is not available from the campaign candidate APIs.' : undefined}
             >
               Bulk Shortlist
             </Button>
@@ -397,6 +540,8 @@ const Candidates: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
               variant="ghost"
               size="sm"
               onClick={handleBulkDisqualify}
+              disabled={selectedIncludesBackend}
+              title={selectedIncludesBackend ? 'Candidate status updates are not available from the campaign candidate APIs.' : undefined}
             >
               Mark Not Interested
             </Button>
@@ -413,7 +558,7 @@ const Candidates: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
         emptyIcon={<Users size={24} />}
         emptyTitle="No candidates found"
         emptyDescription={
-          candidates.length === 0
+          directoryCandidates.length === 0
             ? 'Candidates will appear here once you create a hiring campaign and import candidates.'
             : 'Try adjusting your search criteria or filter options.'
         }

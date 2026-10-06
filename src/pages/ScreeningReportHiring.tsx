@@ -5,19 +5,25 @@
 //   Resume Status | Call Status | Assessment | Recommendation
 // ============================================================
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Search, FileText, Phone, Star,
   CheckCircle2, Clock, ChevronRight, AlertCircle,
-  Users,
+  Users, Loader2,
 } from 'lucide-react';
 import { Avatar } from '../components/ui/Avatar';
 import { CandidateStatusBadge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
-import { useHiring, useHiringCandidates, useAppStore } from '../store/appStore';
+import { useHiring, useAppStore } from '../store/appStore';
 import { screeningReportService } from '../services/screeningReportService';
-import type { Candidate } from '../types';
+import {
+  listCampaignCandidates,
+  listCampaignDocumentScreenings,
+  listCampaigns,
+  mapCampaignCandidate,
+} from '../services/campaignService';
+import type { Candidate, Hiring } from '../types';
 
 // ─── Filter config ────────────────────────────────────────────
 type FilterId = 'all' | 'strong_match' | 'potential_match' | 'not_match' | 'call_complete' | 'needs_review' | 'shortlisted';
@@ -36,7 +42,7 @@ function matchesFilter(c: Candidate, f: FilterId): boolean {
   if (f === 'all') return true;
   if (f === 'strong_match') return (c.matchScore ?? 0) >= 80 && c.compatibility === 'compatible';
   if (f === 'potential_match') return (c.matchScore ?? 0) >= 60 && (c.matchScore ?? 0) < 80 && c.compatibility === 'compatible';
-  if (f === 'not_match') return c.compatibility === 'not_compatible' || (c.matchScore ?? 0) < 60;
+  if (f === 'not_match') return c.compatibility === 'not_compatible' || (c.matchScore !== undefined && c.matchScore < 60);
   if (f === 'call_complete') return !!c.callAssessmentComplete;
   if (f === 'needs_review') return !!c.callAssessmentComplete && ['interested', 'connected', 'shortlisted'].includes(c.status);
   if (f === 'shortlisted') return ['shortlisted', 'interview_scheduled', 'interview_completed', 'hired'].includes(c.status);
@@ -45,7 +51,7 @@ function matchesFilter(c: Candidate, f: FilterId): boolean {
 
 // ─── Score/label helpers ──────────────────────────────────────
 function resumeMatchLabel(score: number | undefined): { text: string; color: string; bg: string; border: string } {
-  if (!score) return { text: 'Not Screened', color: 'var(--text-muted)', bg: 'var(--bg-subtle)', border: 'var(--border-default)' };
+  if (score === undefined) return { text: 'Not Screened', color: 'var(--text-muted)', bg: 'var(--bg-subtle)', border: 'var(--border-default)' };
   if (score >= 80) return { text: 'Strong Match', color: 'var(--status-success-text)', bg: 'var(--status-success-bg)', border: 'var(--status-success-border)' };
   if (score >= 60) return { text: 'Potential Match', color: 'var(--brand-primary)', bg: 'var(--brand-primary-light)', border: 'var(--brand-primary-border)' };
   return { text: 'Not a Match', color: 'var(--status-error-text)', bg: 'var(--status-error-bg)', border: 'var(--status-error-border)' };
@@ -76,11 +82,112 @@ const ScreeningReportHiring: React.FC = () => {
   const navigate = useNavigate();
   const { dispatch } = useAppStore();
 
-  const hiring = useHiring(hiringId ?? '');
-  const candidates = useHiringCandidates(hiringId ?? '');
+  const storedHiring = useHiring(hiringId ?? '');
+  const storedHiringRef = useRef(storedHiring);
+  const [reportHiring, setReportHiring] = useState<Hiring | null>(null);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [candidateListLoaded, setCandidateListLoaded] = useState(false);
+  const [screeningsLoaded, setScreeningsLoaded] = useState(false);
+
+  useEffect(() => { storedHiringRef.current = storedHiring; }, [storedHiring]);
 
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterId>('all');
+
+  useEffect(() => {
+    if (!hiringId) return;
+    let cancelled = false;
+    const load = async () => {
+      const [campaigns, candidateResult, screeningResult] = await Promise.all([
+        listCampaigns(),
+        listCampaignCandidates(hiringId).then(
+          value => ({ status: 'fulfilled' as const, value }),
+          reason => ({ status: 'rejected' as const, reason }),
+        ),
+        listCampaignDocumentScreenings(hiringId).then(
+          value => ({ status: 'fulfilled' as const, value }),
+          reason => ({ status: 'rejected' as const, reason }),
+        ),
+      ]);
+      if (cancelled) return;
+      const campaign = campaigns.find(item => item.id === hiringId);
+      if (!campaign) {
+        setLoadError('This campaign was not found in the campaign list.');
+        setReportHiring(storedHiringRef.current ?? null);
+        setCandidates([]);
+        setCandidateListLoaded(false);
+        setScreeningsLoaded(false);
+        setLoading(false);
+        return;
+      }
+
+      const hiring: Hiring = {
+        ...(storedHiringRef.current ?? {
+          id: campaign.id,
+          title: campaign.title,
+          location: '—',
+          employmentType: 'full_time',
+          status: screeningResult.status === 'fulfilled' &&
+            screeningResult.value.some(item => item.match_score !== null) ? 'screened' : 'screening',
+          candidateCount: 0,
+          contacted: 0,
+          connected: 0,
+          interested: 0,
+          shortlisted: 0,
+          candidateIds: [],
+          createdAt: campaign.created_at,
+          updatedAt: campaign.updated_at,
+        }),
+        id: campaign.id,
+        title: campaign.title,
+        backendCampaign: true,
+        updatedAt: campaign.updated_at || campaign.created_at,
+      };
+      const screenings = screeningResult.status === 'fulfilled' ? screeningResult.value : [];
+      setCandidateListLoaded(candidateResult.status === 'fulfilled');
+      setScreeningsLoaded(screeningResult.status === 'fulfilled');
+      const screeningByCandidateId = new Map(screenings.map(item => [item.candidate_id, item]));
+      const mappedCandidates = candidateResult.status === 'fulfilled'
+        ? candidateResult.value.map(candidate => {
+          const mapped = mapCampaignCandidate(candidate, screeningByCandidateId.get(candidate.id), campaign.title);
+          return mapped;
+        })
+        : [];
+
+      setReportHiring(hiring);
+      setCandidates(mappedCandidates);
+      const warnings = [
+        ...(candidateResult.status === 'rejected'
+          ? [`Candidate list could not be loaded${candidateResult.reason instanceof Error ? `: ${candidateResult.reason.message}` : '.'}`]
+          : []),
+        ...(screeningResult.status === 'rejected'
+          ? [`Document screening results could not be loaded${screeningResult.reason instanceof Error ? `: ${screeningResult.reason.message}` : '.'}`]
+          : []),
+      ];
+      setLoadError(warnings.join(' '));
+
+      if (!storedHiringRef.current) dispatch({ type: 'CREATE_HIRING', payload: hiring });
+      else dispatch({ type: 'UPDATE_HIRING', payload: { id: hiring.id, updates: hiring } });
+      if (candidateResult.status === 'fulfilled') {
+        dispatch({ type: 'ADD_CANDIDATES', payload: { hiringId, candidates: mappedCandidates } });
+      }
+      setLoading(false);
+    };
+    void load().catch(error => {
+      if (cancelled) return;
+      setLoadError(error instanceof Error ? error.message : 'Failed to load campaign screening data.');
+      setReportHiring(storedHiringRef.current ?? null);
+      setCandidates([]);
+      setCandidateListLoaded(false);
+      setScreeningsLoaded(false);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [hiringId, dispatch]);
+
+  const hiring = reportHiring ?? storedHiring;
 
   const filtered = useMemo(() => {
     return candidates.filter(c => {
@@ -94,11 +201,14 @@ const ScreeningReportHiring: React.FC = () => {
   }, [candidates, search, activeFilter]);
 
   if (!hiring) {
+    if (loading) {
+      return <div className="page-content" role="status"><Loader2 size={16} className="spin" /> Loading campaign screening data…</div>;
+    }
     return (
       <div className="page-content">
         <EmptyState
           title="Hiring not found"
-          description="This campaign does not exist or has been removed."
+          description={loadError || 'This campaign does not exist or has been removed.'}
           action={{ label: 'Back to Screening Reports', onClick: () => navigate('/screening-reports') }}
         />
       </div>
@@ -107,13 +217,32 @@ const ScreeningReportHiring: React.FC = () => {
 
   // Aggregate counts
   const resumeScreened = candidates.filter(c => c.matchScore !== undefined).length;
-  const callScreened = candidates.filter(c => c.callAssessmentComplete).length;
+  const callScreened = null;
   const strongMatches = candidates.filter(c => (c.matchScore ?? 0) >= 80 && c.compatibility === 'compatible').length;
-  const shortlisted = candidates.filter(c => ['shortlisted', 'interview_scheduled', 'interview_completed', 'hired'].includes(c.status)).length;
-  const needsReview = candidates.filter(c => c.callAssessmentComplete && ['interested', 'connected', 'shortlisted'].includes(c.status)).length;
+  const shortlisted = null;
+  const needsReview = null;
+
+  const toggleFavorite = (candidate: Candidate) => {
+    dispatch({ type: 'TOGGLE_FAVORITE', payload: candidate.id });
+    setCandidates(current => current.map(item =>
+      item.id === candidate.id ? { ...item, isFavorite: !item.isFavorite } : item
+    ));
+  };
 
   return (
     <div className="page-content animate-fade-in">
+      {(loading || loadError) && (
+        <div role={loadError ? 'alert' : 'status'} style={{
+          display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px',
+          marginBottom: '14px', borderRadius: 'var(--radius-md)',
+          background: loadError ? 'var(--status-warning-bg)' : 'var(--bg-subtle)',
+          color: loadError ? 'var(--status-warning-text)' : 'var(--text-secondary)',
+          fontSize: 'var(--font-size-sm)',
+        }}>
+          {loading && <Loader2 size={14} className="spin" />}
+          {loading ? 'Loading candidates and screening results…' : loadError}
+        </div>
+      )}
 
       {/* ── Back ── */}
       <button
@@ -132,7 +261,9 @@ const ScreeningReportHiring: React.FC = () => {
         <div className="page-header__text">
           <h1 className="page-header__title">{hiring.title}</h1>
           <p className="page-header__subtitle">
-            {hiring.location} · Screening report for all {candidates.length} candidate{candidates.length !== 1 ? 's' : ''}
+            {hiring.location} · Screening report for {loading ? '…' : candidateListLoaded
+              ? `all ${candidates.length} candidate${candidates.length !== 1 ? 's' : ''}`
+              : '— candidates'}
           </p>
         </div>
         <div className="page-header__actions">
@@ -154,28 +285,28 @@ const ScreeningReportHiring: React.FC = () => {
       <div className="metrics-row" style={{ marginBottom: '20px' }}>
         <div className="metric-tile">
           <div className="metric-tile__header"><Users size={11} style={{ display: 'inline' }} /> <span>CANDIDATES</span></div>
-          <div className="metric-tile__value">{candidates.length}</div>
+          <div className="metric-tile__value">{candidateListLoaded ? candidates.length : '—'}</div>
           <span className="metric-tile__sub">In this campaign</span>
         </div>
         <div className="metric-tile">
           <div className="metric-tile__header"><FileText size={11} style={{ display: 'inline' }} /> <span>RESUME SCREENED</span></div>
-          <div className="metric-tile__value">{resumeScreened}</div>
+          <div className="metric-tile__value">{screeningsLoaded ? resumeScreened : '—'}</div>
           <span className="metric-tile__sub">JD compatibility done</span>
         </div>
         <div className="metric-tile">
           <div className="metric-tile__header"><Phone size={11} style={{ display: 'inline' }} /> <span>CALL SCREENED</span></div>
-          <div className="metric-tile__value">{callScreened}</div>
-          <span className="metric-tile__sub">AI assessment complete</span>
+          <div className="metric-tile__value">{callScreened ?? '—'}</div>
+          <span className="metric-tile__sub">Not available from campaign screening APIs</span>
         </div>
         <div className="metric-tile">
           <div className="metric-tile__header"><Star size={11} style={{ display: 'inline' }} /> <span>STRONG MATCHES</span></div>
-          <div className="metric-tile__value" style={{ color: 'var(--status-success-text)' }}>{strongMatches}</div>
+          <div className="metric-tile__value" style={{ color: screeningsLoaded ? 'var(--status-success-text)' : undefined }}>{screeningsLoaded ? strongMatches : '—'}</div>
           <span className="metric-tile__sub">Resume score ≥ 80%</span>
         </div>
         <div className="metric-tile">
           <div className="metric-tile__header"><CheckCircle2 size={11} style={{ display: 'inline' }} /> <span>SHORTLISTED</span></div>
-          <div className="metric-tile__value" style={{ color: 'var(--brand-primary)' }}>{shortlisted}</div>
-          <span className="metric-tile__sub">Ready for interview</span>
+          <div className="metric-tile__value" style={{ color: 'var(--brand-primary)' }}>{shortlisted ?? '—'}</div>
+          <span className="metric-tile__sub">Not available from campaign screening APIs</span>
         </div>
       </div>
 
@@ -208,11 +339,11 @@ const ScreeningReportHiring: React.FC = () => {
             STAGE 2
           </span>
           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)', fontWeight: 600 }}>
-            AI Call Assessment
+            AI Call Assessment — unavailable
           </span>
         </div>
         <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>
-          Resume and call assessments are separate. Full recommendation is available after both are complete.
+          Campaign APIs currently provide document-screening results only.
         </p>
       </div>
 
@@ -241,17 +372,24 @@ const ScreeningReportHiring: React.FC = () => {
             <button
               key={f.id}
               onClick={() => setActiveFilter(f.id)}
+              disabled={hiring.backendCampaign && ['call_complete', 'needs_review', 'shortlisted'].includes(f.id)}
+              title={hiring.backendCampaign && ['call_complete', 'needs_review', 'shortlisted'].includes(f.id)
+                ? 'This data is not available from the campaign screening APIs.'
+                : undefined}
               style={{
                 padding: '4px 12px', borderRadius: 'var(--radius-full)',
                 fontSize: 'var(--font-size-xs)', fontWeight: 500,
-                border: '1px solid', cursor: 'pointer', transition: 'all var(--transition-fast)',
+                border: '1px solid',
+                cursor: hiring.backendCampaign && ['call_complete', 'needs_review', 'shortlisted'].includes(f.id) ? 'not-allowed' : 'pointer',
+                opacity: hiring.backendCampaign && ['call_complete', 'needs_review', 'shortlisted'].includes(f.id) ? 0.55 : 1,
+                transition: 'all var(--transition-fast)',
                 borderColor: activeFilter === f.id ? 'var(--brand-primary)' : 'var(--border-default)',
                 background: activeFilter === f.id ? 'var(--brand-primary-light)' : 'var(--bg-white)',
                 color: activeFilter === f.id ? 'var(--brand-primary)' : 'var(--text-secondary)',
               }}
             >
               {f.label}
-              {f.id === 'needs_review' && needsReview > 0 && (
+              {f.id === 'needs_review' && needsReview !== null && needsReview > 0 && (
                 <span style={{
                   marginLeft: '4px', padding: '0 4px',
                   borderRadius: 'var(--radius-full)',
@@ -307,9 +445,9 @@ const ScreeningReportHiring: React.FC = () => {
             <CandidateReportRow
               key={c.id}
               candidate={c}
-              hiringId={hiring.id}
+              backendCampaign={!!hiring.backendCampaign}
               onOpen={() => navigate(`/screening-reports/${hiring.id}/candidate/${c.id}`)}
-              onToggleFavorite={() => dispatch({ type: 'TOGGLE_FAVORITE', payload: c.id })}
+              onToggleFavorite={() => toggleFavorite(c)}
             />
           ))}
         </div>
@@ -321,13 +459,15 @@ const ScreeningReportHiring: React.FC = () => {
 // ─── Candidate row ────────────────────────────────────────────
 const CandidateReportRow: React.FC<{
   candidate: Candidate;
-  hiringId: string;
+  backendCampaign: boolean;
   onOpen: () => void;
   onToggleFavorite: () => void;
-}> = ({ candidate: c, onOpen, onToggleFavorite }) => {
+}> = ({ candidate: c, backendCampaign, onOpen, onToggleFavorite }) => {
   const resumeInfo = resumeMatchLabel(c.matchScore);
-  const callInfo = callStatusInfo(c);
-  const callText = callStatusText(c);
+  const callInfo = backendCampaign
+    ? { text: 'Unavailable', color: 'var(--text-muted)', bg: 'var(--bg-subtle)', border: 'var(--border-default)' }
+    : callStatusInfo(c);
+  const callText = backendCampaign ? 'Unavailable' : callStatusText(c);
   const hasReport = screeningReportService.isReportAvailable(c);
 
   // Overall recommendation chip
@@ -388,7 +528,7 @@ const CandidateReportRow: React.FC<{
           </div>
         ) : (
           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <Clock size={10} /> Pending
+            <Clock size={10} /> {c.documentScreeningId ? 'Not Scored' : 'Pending'}
           </span>
         )}
       </div>
@@ -409,7 +549,7 @@ const CandidateReportRow: React.FC<{
               {c.callAssessmentScore}/10
             </span>
           )}
-          {!c.callAssessmentComplete && c.callDuration && (
+          {!backendCampaign && !c.callAssessmentComplete && c.callDuration && (
             <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>
               {c.callDuration}
             </span>
@@ -437,7 +577,7 @@ const CandidateReportRow: React.FC<{
           </span>
         ) : (
           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            {c.callAssessmentComplete ? '—' : (
+            {backendCampaign ? 'Unavailable' : c.callAssessmentComplete ? '—' : (
               <>
                 <AlertCircle size={10} />
                 Call pending

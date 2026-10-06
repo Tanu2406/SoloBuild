@@ -17,6 +17,10 @@ export interface AgentResponse {
   is_preset?: boolean;
 }
 
+export interface AgentListResponse extends AgentResponse {
+  is_preset: boolean;
+}
+
 // ——— Allowed enum values (as per backend spec) ———
 export type ConversationStyle =
   | 'Friendly Conversational'
@@ -52,8 +56,8 @@ export async function createAgent(payload: AgentPayload): Promise<AgentResponse>
 }
 
 // ——— List all agents ———
-export async function listAgents(): Promise<AgentResponse[]> {
-  return apiRequest<AgentResponse[]>('/agents', { method: 'GET' });
+export async function listAgents(): Promise<AgentListResponse[]> {
+  return apiRequest<AgentListResponse[]>('/agents', { method: 'GET' });
 }
 
 // ——— Get single agent ———

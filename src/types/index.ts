@@ -99,6 +99,14 @@ export interface Candidate {
   includedInCallList?: boolean;
   documentScreeningId?: string;
   documentScreeningSummary?: string;
+  extractedFields?: Record<string, unknown>;
+  resumeUrl?: string;
+  workflowStep?: string;
+  workflowStepStatus?: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  backendCampaignCandidate?: boolean;
+  candidateUpdatedAt?: string;
+  documentScreeningCreatedAt?: string;
+  documentScreeningUpdatedAt?: string;
   // Call assessment fields (post-call)
   callAssessmentScore?: number;          // 0-10
   callAssessmentLabel?: AIHireLabel;     // overall recommendation label
@@ -111,6 +119,7 @@ export interface Candidate {
 export interface AIRecruiter {
   id: string;
   name: string;
+  isPreset?: boolean;
   description: string;
   languages: string[];
   voice: string;

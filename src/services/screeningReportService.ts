@@ -1,10 +1,7 @@
 // ============================================================
 // Screening Report Service
-// Generates full CandidateScreeningReportData for any candidate.
-// All data is derived from the candidate's existing store fields
-// plus role-specific mock assessment data keyed by candidate id.
-// When the backend is ready, replace getReport() with an API call:
-//   GET /screening-reports/{candidateId}
+// Produces the report model for local candidates; backend campaign candidates
+// are limited to the actual document-screening and extracted-resume data.
 // ============================================================
 
 import type {
@@ -34,6 +31,26 @@ function hireLabelText(label: AIHireLabel): string {
   if (label === 'hire') return 'Hire';
   if (label === 'consider') return 'Consider';
   return 'No Hire';
+}
+
+function extractedFieldText(value: unknown): string | undefined {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    const values = value.map(extractedFieldText).filter((item): item is string => Boolean(item));
+    return values.length ? values.join('; ') : undefined;
+  }
+  if (value && typeof value === 'object') {
+    const fields = Object.entries(value as Record<string, unknown>)
+      .map(([key, fieldValue]) => {
+        const text = extractedFieldText(fieldValue);
+        return text ? `${key.replace(/[_-]/g, ' ')}: ${text}` : undefined;
+      })
+      .filter((item): item is string => Boolean(item));
+    return fields.length ? fields.join(', ') : undefined;
+  }
+  return undefined;
 }
 
 // ─── Role-specific assessment data ──────────────────────────
@@ -537,10 +554,74 @@ function buildFallbackAssessment(candidate: Candidate): CandidateAssessmentOverr
 export const screeningReportService = {
   /**
    * Returns a full CandidateScreeningReportData for the given candidate.
-   * Combines store data (resume fields, call status) with rich mock assessment.
-   * Replace this with: GET /screening-reports/{candidateId}
+   * Uses local assessment fixtures only for non-backend campaign candidates.
    */
-  getReport(candidate: Candidate): CandidateScreeningReportData {
+  getReport(candidate: Candidate, backendCampaign = false): CandidateScreeningReportData {
+    if (backendCampaign) {
+      const resumeEvidence: EvidenceItem[] = [
+        ...Object.entries(candidate.extractedFields ?? {}).flatMap(([key, value]) => {
+          const detail = extractedFieldText(value);
+          return detail ? [{
+            source: 'resume' as const,
+            label: key.replace(/[_-]/g, ' '),
+            detail,
+          }] : [];
+        }),
+        ...(candidate.strongMatches ?? []).map(label => ({
+          source: 'resume' as const,
+          label: `Matched: ${label}`,
+          detail: '',
+        })),
+        ...(candidate.missingRequirements ?? []).map(label => ({
+          source: 'resume' as const,
+          label: `Unmatched: ${label}`,
+          detail: '',
+        })),
+      ];
+      const emptyCallAssessment: CallAssessmentReport = {
+        complete: false,
+        overallScore: 0,
+        label: 'consider',
+        confidence: 'low',
+        signalCount: 0,
+        callDuration: '',
+        strengths: [],
+        concerns: [],
+        recommendedNextStep: '',
+        dimensions: [],
+        evidence: [],
+      };
+      const capabilityAnalysis: CapabilityAnalysis = {
+        competencies: [],
+        totalWeighted: 0,
+        radarSummary: '',
+        skillGroups: [],
+      };
+      return {
+        candidateId: candidate.id,
+        generatedAt: '',
+        resumeScreening: {
+          matchScore: candidate.matchScore ?? null,
+          compatibility: candidate.compatibility ?? null,
+          resumeLabel: labelForScore(candidate.matchScore),
+          strongMatches: candidate.strongMatches ?? [],
+          missingRequirements: candidate.missingRequirements ?? [],
+          resumeSummary: candidate.documentScreeningSummary ?? '',
+          evidence: resumeEvidence,
+        },
+        callAssessment: emptyCallAssessment,
+        capabilityAnalysis,
+        overallRecommendation: {
+          label: 'consider',
+          score: 0,
+          summary: candidate.documentScreeningSummary ?? '',
+          strengths: candidate.strongMatches ?? [],
+          concerns: candidate.missingRequirements ?? [],
+          recommendedNextStep: '',
+        },
+      };
+    }
+
     const override = assessmentOverrides[candidate.id] ?? buildFallbackAssessment(candidate);
     const callComplete = !!candidate.callAssessmentComplete;
     const isBackendDocumentScreening = candidate.documentScreeningId !== undefined;
@@ -636,7 +717,7 @@ export const screeningReportService = {
 
   /** Returns true if the candidate has enough data to show a complete report */
   isReportAvailable(candidate: Candidate): boolean {
-    return (candidate.matchScore !== undefined);
+    return candidate.documentScreeningId !== undefined || candidate.matchScore !== undefined;
   },
 
   /** Whether call assessment section is available */

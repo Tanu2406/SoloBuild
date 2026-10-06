@@ -210,15 +210,29 @@ function getFieldLabels(fields: Record<string, unknown> | null): string[] {
   if (!fields) return [];
   return Object.entries(fields).map(([key, value]) => {
     const label = key.replace(/[_-]/g, ' ');
-    if (typeof value === 'string' || typeof value === 'number') return `${label}: ${value}`;
-    if (Array.isArray(value)) {
-      const values = value.filter((item): item is string | number => (
-        typeof item === 'string' || typeof item === 'number'
-      ));
-      return values.length ? `${label}: ${values.join(', ')}` : label;
-    }
-    return label;
+    const text = getFieldValueText(value);
+    return text ? `${label}: ${text}` : label;
   });
+}
+
+function getFieldValueText(value: unknown): string | undefined {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    const values = value.map(getFieldValueText).filter((item): item is string => Boolean(item));
+    return values.length ? values.join(', ') : undefined;
+  }
+  if (value && typeof value === 'object') {
+    const values = Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => {
+        const text = getFieldValueText(item);
+        return text ? `${key.replace(/[_-]/g, ' ')}: ${text}` : undefined;
+      })
+      .filter((item): item is string => Boolean(item));
+    return values.length ? values.join('; ') : undefined;
+  }
+  return undefined;
 }
 
 export function applyDocumentScreening(
@@ -240,6 +254,8 @@ export function applyDocumentScreening(
     aiSummary: screening.summary ?? undefined,
     documentScreeningId: screening.id,
     documentScreeningSummary: screening.summary ?? undefined,
+    documentScreeningCreatedAt: screening.created_at,
+    documentScreeningUpdatedAt: screening.updated_at,
     includedInCallList: score === undefined ? false : score >= 60,
   };
 }
@@ -258,10 +274,17 @@ export function mapCampaignCandidate(
     name: candidate.name || candidate.email || candidate.id,
     phone: candidate.phone || '',
     email: candidate.email || undefined,
+    location: getFieldText(extracted, 'location', 'city', 'current_location'),
     position: hiringTitle,
     experience: getFieldText(extracted, 'experience', 'years_experience', 'experience_years'),
     skills: skillsText ? skillsText.split(',').map(skill => skill.trim()).filter(Boolean) : undefined,
     education: getFieldText(extracted, 'education', 'qualification', 'degree'),
+    extractedFields: extracted,
+    resumeUrl: candidate.file_url || undefined,
+    workflowStep: candidate.workflow_step || undefined,
+    workflowStepStatus: candidate.step_status,
+    backendCampaignCandidate: true,
+    candidateUpdatedAt: candidate.updated_at || candidate.created_at,
     hiringId: candidate.campaign_id,
     hiringTitle,
     status: 'added',
