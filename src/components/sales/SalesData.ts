@@ -2,6 +2,7 @@ export interface SalesLead extends Record<string, string | number | undefined> {
   id: string;
   name: string;
   company: string;
+  designation: string;
   industry: string;
   location: string;
   source: string;
@@ -28,7 +29,7 @@ export interface SalesLead extends Record<string, string | number | undefined> {
 
 export const salesLeads: SalesLead[] = [
   {
-    id: 'l-1001', name: 'Maya Patel', company: 'Northstar Health', industry: 'Healthcare',
+    id: 'l-1001', name: 'Maya Patel', company: 'Northstar Health', designation: 'VP, Operations', industry: 'Healthcare',
     location: 'Austin, TX', source: 'Website', contact: 'maya.patel@northstarhealth.com',
     status: 'New', email: 'maya.patel@northstarhealth.com', phone: '+1 (512) 555-0184',
     companySize: '500–1,000', qualificationScore: 92, budget: '$80k–$120k',
@@ -38,7 +39,7 @@ export const salesLeads: SalesLead[] = [
     priority: 'High', assignedDate: 'Oct 02, 2026',
   },
   {
-    id: 'l-1002', name: 'Ethan Brooks', company: 'Vertex Commerce', industry: 'Retail',
+    id: 'l-1002', name: 'Ethan Brooks', company: 'Vertex Commerce', designation: 'Director, Growth', industry: 'Retail',
     location: 'New York, NY', source: 'LinkedIn', contact: 'ethan@vertexcommerce.com',
     status: 'Contacted', email: 'ethan@vertexcommerce.com', phone: '+1 (212) 555-0140',
     companySize: '1,000–5,000', qualificationScore: 84, budget: '$50k–$80k',
@@ -48,7 +49,7 @@ export const salesLeads: SalesLead[] = [
     priority: 'High', assignedDate: 'Oct 01, 2026',
   },
   {
-    id: 'l-1003', name: 'Sofia Chen', company: 'Brightpath Learning', industry: 'Education',
+    id: 'l-1003', name: 'Sofia Chen', company: 'Brightpath Learning', designation: 'VP, Enrollment', industry: 'Education',
     location: 'Seattle, WA', source: 'Partner referral', contact: 'sofia@brightpath.edu',
     status: 'Qualified', email: 'sofia@brightpath.edu', phone: '+1 (206) 555-0117',
     companySize: '200–500', qualificationScore: 77, budget: '$30k–$50k',
@@ -58,7 +59,7 @@ export const salesLeads: SalesLead[] = [
     priority: 'Medium', assignedDate: 'Sep 30, 2026',
   },
   {
-    id: 'l-1004', name: 'Noah Williams', company: 'Apex Industrial', industry: 'Manufacturing',
+    id: 'l-1004', name: 'Noah Williams', company: 'Apex Industrial', designation: 'Sales Director', industry: 'Manufacturing',
     location: 'Chicago, IL', source: 'Webinar', contact: 'noah.w@apexindustrial.com',
     status: 'Researching', email: 'noah.w@apexindustrial.com', phone: '+1 (312) 555-0163',
     companySize: '1,000–5,000', qualificationScore: 69, budget: '$20k–$40k',
@@ -68,7 +69,7 @@ export const salesLeads: SalesLead[] = [
     priority: 'Medium', assignedDate: '—',
   },
   {
-    id: 'l-1005', name: 'Isabella Garcia', company: 'Summit Financial', industry: 'Financial Services',
+    id: 'l-1005', name: 'Isabella Garcia', company: 'Summit Financial', designation: 'Operations Manager', industry: 'Financial Services',
     location: 'Denver, CO', source: 'Outbound', contact: 'isabella@summitfinancial.io',
     status: 'New', email: 'isabella@summitfinancial.io', phone: '+1 (303) 555-0195',
     companySize: '500–1,000', qualificationScore: 54, budget: '$10k–$25k',
@@ -78,7 +79,7 @@ export const salesLeads: SalesLead[] = [
     priority: 'Low', assignedDate: '—',
   },
   {
-    id: 'l-1006', name: 'Liam Thompson', company: 'Evergreen Energy', industry: 'Energy',
+    id: 'l-1006', name: 'Liam Thompson', company: 'Evergreen Energy', designation: 'Business Development Lead', industry: 'Energy',
     location: 'Portland, OR', source: 'Trade show', contact: 'liam.t@evergreenenergy.com',
     status: 'Nurturing', email: 'liam.t@evergreenenergy.com', phone: '+1 (503) 555-0131',
     companySize: '200–500', qualificationScore: 36, budget: 'Not confirmed',

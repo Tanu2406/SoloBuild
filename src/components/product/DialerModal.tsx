@@ -17,6 +17,16 @@ interface DialerModalProps {
   onClose: () => void;
   initialPhone?: string;
   initialCandidateName?: string;
+  initialPurpose?: CallPurpose;
+  contactType?: 'candidate' | 'lead';
+  contactContext?: {
+    company: string;
+    email: string;
+    designation: string;
+    status: string;
+    score: number;
+    interest: string;
+  };
 }
 
 type DialerScreen = 'form' | 'active' | 'result';
@@ -105,6 +115,9 @@ export const DialerModal: React.FC<DialerModalProps> = ({
   onClose,
   initialPhone,
   initialCandidateName,
+  initialPurpose = 'initial_screening',
+  contactType = 'candidate',
+  contactContext,
 }) => {
   const { showToast } = useToast();
   const { dispatch } = useAppStore();
@@ -114,15 +127,16 @@ export const DialerModal: React.FC<DialerModalProps> = ({
   const [phone, setPhone] = useState(initialPhone || '');
   const [candidateName, setCandidateName] = useState(initialCandidateName || '');
   const [recruiterId, setRecruiterId] = useState('');
-  const [purpose, setPurpose] = useState<CallPurpose>('initial_screening');
+  const [purpose, setPurpose] = useState<CallPurpose>(initialPurpose);
   const [errors, setErrors] = useState<{ phone?: string; recruiterId?: string }>({});
 
   useEffect(() => {
     if (open) {
       if (initialPhone) setPhone(initialPhone);
       if (initialCandidateName) setCandidateName(initialCandidateName);
+      setPurpose(initialPurpose);
     }
-  }, [open, initialPhone, initialCandidateName]);
+  }, [open, initialPhone, initialCandidateName, initialPurpose]);
 
   // Call state
   const [screen, setScreen] = useState<DialerScreen>('form');
@@ -160,7 +174,7 @@ export const DialerModal: React.FC<DialerModalProps> = ({
   function reset() {
     setPhone('');
     setCandidateName('');
-    setPurpose('initial_screening');
+    setPurpose(initialPurpose);
     setErrors({});
     setScreen('form');
     setCallStatus('preparing');
@@ -182,7 +196,7 @@ export const DialerModal: React.FC<DialerModalProps> = ({
   function validate() {
     const e: { phone?: string; recruiterId?: string } = {};
     if (!phone.trim()) {
-      e.phone = 'Candidate phone number is required';
+      e.phone = `${contactType === 'lead' ? 'Lead' : 'Candidate'} phone number is required`;
     } else if (!/^[\d\s+\-()]{7,}$/.test(phone.trim())) {
       e.phone = 'Please enter a valid phone number';
     }
@@ -241,12 +255,15 @@ export const DialerModal: React.FC<DialerModalProps> = ({
             event.status === 'no_answer' ? 'direct_call_no_answer' :
             'direct_call_failed';
 
+          const callContact = [candidateName.trim() || phone.trim(), contactContext?.company]
+            .filter(Boolean)
+            .join(' · ');
           const desc =
             event.status === 'completed'
-              ? `Direct call completed${event.duration ? ` — ${event.duration}` : ''}${candidateName ? ` · ${candidateName}` : ''}`
+              ? `Direct call completed${event.duration ? ` — ${event.duration}` : ''}${callContact ? ` · ${callContact}` : ''}`
               : event.status === 'no_answer'
-              ? `Direct call — no answer${candidateName ? ` · ${candidateName}` : ''}`
-              : `Direct call failed${candidateName ? ` · ${candidateName}` : ''}`;
+              ? `Direct call — no answer${callContact ? ` · ${callContact}` : ''}`
+              : `Direct call failed${callContact ? ` · ${callContact}` : ''}`;
 
           dispatch({
             type: 'ADD_ACTIVITY',
@@ -273,9 +290,39 @@ export const DialerModal: React.FC<DialerModalProps> = ({
 
   function handleEndCall() {
     if (activeCallIdRef.current) {
+      const now = new Date();
       dialerService.cancelCall(activeCallIdRef.current, (event) => {
         setCallStatus(event.status);
       });
+      if (contactType === 'lead' && contactContext) {
+        const leadName = candidateName.trim() || phone.trim();
+        dispatch({
+          type: 'ADD_DIRECT_CALL',
+          payload: {
+            id: activeCallIdRef.current,
+            candidateName: leadName,
+            phoneNumber: phone.trim(),
+            aiRecruiterId: recruiterId,
+            purpose,
+            status: 'failed',
+            duration: formatElapsed(elapsed),
+            startedAt: new Date(now.getTime() - elapsed * 1000).toISOString(),
+            endedAt: now.toISOString(),
+            timeAgo: 'just now',
+          },
+        });
+        dispatch({
+          type: 'ADD_ACTIVITY',
+          payload: {
+            id: `act_dc_${Date.now()}`,
+            type: 'direct_call_failed',
+            candidateName: leadName,
+            description: `Sales lead call ended · ${leadName} · ${contactContext.company}`,
+            timestamp: now.toISOString(),
+            timeAgo: 'just now',
+          },
+        });
+      }
     }
   }
 
@@ -300,13 +347,17 @@ export const DialerModal: React.FC<DialerModalProps> = ({
               </div>
               <div>
                 <h2 className="dialer__title">Dial a Number</h2>
-                <p className="dialer__subtitle">Your AI Recruiter will handle the conversation.</p>
+                <p className="dialer__subtitle">
+                  {contactType === 'lead'
+                    ? 'Your AI Recruiter will handle the conversation with this lead.'
+                    : 'Your AI Recruiter will handle the conversation.'}
+                </p>
               </div>
             </div>
 
             <div className="dialer__fields">
               <Input
-                label="Candidate phone number"
+                label={contactType === 'lead' ? 'Lead phone number' : 'Candidate phone number'}
                 placeholder="+91 98765 43210"
                 value={phone}
                 onChange={e => { setPhone(e.target.value); setErrors(er => ({ ...er, phone: '' })); }}
@@ -316,7 +367,7 @@ export const DialerModal: React.FC<DialerModalProps> = ({
               />
 
               <Input
-                label="Candidate name"
+                label={contactType === 'lead' ? 'Lead name' : 'Candidate name'}
                 placeholder="Optional — helps your AI Recruiter"
                 value={candidateName}
                 onChange={e => setCandidateName(e.target.value)}
@@ -339,6 +390,19 @@ export const DialerModal: React.FC<DialerModalProps> = ({
                 />
               </div>
             </div>
+
+            {contactContext && (
+              <div className="dialer__contact-context" aria-label="Lead details">
+                <strong>{contactContext.company}</strong>
+                <span>{contactContext.designation}</span>
+                <span>{contactContext.email}</span>
+                <div>
+                  <span>Status: {contactContext.status}</span>
+                  <span>Score: {contactContext.score}</span>
+                </div>
+                <span>Interest: {contactContext.interest}</span>
+              </div>
+            )}
 
             <div className="dialer__platform-note">
               <Phone size={13} />
@@ -384,6 +448,15 @@ export const DialerModal: React.FC<DialerModalProps> = ({
                 {candidateName && <span className="dialer__call-candidate-name">{candidateName}</span>}
                 <span>{phone}</span>
               </div>
+              {contactContext && (
+                <div className="dialer__contact-context" aria-label="Lead details">
+                  <strong>{contactContext.company}</strong>
+                  <span>{contactContext.designation}</span>
+                  <span>{contactContext.email}</span>
+                  <span>Status: {contactContext.status} · Score: {contactContext.score}</span>
+                  <span>Interest: {contactContext.interest}</span>
+                </div>
+              )}
             </div>
 
             {/* Live elapsed timer */}
@@ -496,6 +569,23 @@ style.textContent = `
 .dialer__fields { display: flex; flex-direction: column; gap: 16px; }
 
 .dialer__field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.dialer__contact-context {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+  padding: 10px 12px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.dialer__contact-context > strong { color: var(--text-primary); }
+.dialer__contact-context > div { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 
 .dialer__platform-note {
   display: flex;

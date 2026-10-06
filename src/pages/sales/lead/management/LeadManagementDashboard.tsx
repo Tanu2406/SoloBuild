@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Activity,
@@ -10,6 +10,7 @@ import {
   Flame,
   Gauge,
   Megaphone,
+  Phone,
   Search,
   Target,
   TrendingUp,
@@ -20,11 +21,13 @@ import { PageHeader } from '../../../../components/ui/Layout';
 import { StatCard } from '../../../../components/ui/StatCard';
 import { Badge } from '../../../../components/ui/Badge';
 import { Button } from '../../../../components/ui/Button';
-import { salesLeads } from '../../../../components/sales/SalesData';
-import { SalesCallButton } from '../../../../components/sales/SalesCallButton';
+import { salesLeads, type SalesLead } from '../../../../components/sales/SalesData';
+import { DialerModal } from '../../../../components/product/DialerModal';
 
 const LeadManagementDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const [dialerLead, setDialerLead] = useState<SalesLead | null>(null);
+  const [dialerOpen, setDialerOpen] = useState(false);
   const hotLeads = salesLeads.filter((lead) => lead.category === 'Hot').length;
   const qualified = salesLeads.filter((lead) => lead.status === 'Qualified').length;
   const pipeline = [
@@ -46,9 +49,25 @@ const LeadManagementDashboard: React.FC = () => {
   return (
     <div className="page-content animate-fade-in">
       <PageHeader
-        title="Sales / Lead Management"
+        title="Sales Operations"
         subtitle="Track, qualify, and convert your sales pipeline from one workspace."
-        actions={<Button variant="primary" onClick={() => navigate('/sales/lead-management/lead-research')}>Explore leads <ArrowRight size={15} /></Button>}
+        actions={
+          <>
+            <Button
+              variant="outline"
+              icon={<Phone size={15} />}
+              onClick={() => {
+                setDialerLead(null);
+                setDialerOpen(true);
+              }}
+            >
+              Dial a Number
+            </Button>
+            <Button variant="primary" onClick={() => navigate('/sales/lead-management/lead-research')}>
+              Explore leads <ArrowRight size={15} />
+            </Button>
+          </>
+        }
       />
 
       <div className="sales-stats-grid">
@@ -136,11 +155,42 @@ const LeadManagementDashboard: React.FC = () => {
               <span className="sales-recent-lead__owner">{lead.salesRep}</span>
               <Badge variant={lead.category === 'Hot' ? 'error' : lead.category === 'Warm' ? 'warning' : 'neutral'} dot>{lead.category}</Badge>
               <strong className="sales-recent-lead__score">{lead.totalScore}</strong>
-              <SalesCallButton contactName={lead.name} />
+              {lead.phone && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  icon={<Phone size={13} />}
+                  onClick={() => {
+                    setDialerLead(lead);
+                    setDialerOpen(true);
+                  }}
+                >
+                  Call
+                </Button>
+              )}
             </article>
           ))}
         </div>
       </section>
+      <DialerModal
+        open={dialerOpen}
+        onClose={() => {
+          setDialerOpen(false);
+          setDialerLead(null);
+        }}
+        initialPhone={dialerLead?.phone}
+        initialCandidateName={dialerLead?.name}
+        initialPurpose="general"
+        contactType="lead"
+        contactContext={dialerLead ? {
+          company: dialerLead.company,
+          email: dialerLead.email,
+          designation: dialerLead.designation,
+          status: dialerLead.status,
+          score: dialerLead.totalScore,
+          interest: dialerLead.businessNeed,
+        } : undefined}
+      />
     </div>
   );
 };

@@ -5,12 +5,13 @@ import { Button } from '../../../../components/ui/Button';
 import { PageHeader } from '../../../../components/ui/Layout';
 import { useToast } from '../../../../components/ui/Toast';
 import { salesLeads } from '../../../../components/sales/SalesData';
-import { SalesCallButton } from '../../../../components/sales/SalesCallButton';
+import { DialerModal } from '../../../../components/product/DialerModal';
 
 const LeadEnrichment: React.FC = () => {
   const { showToast } = useToast();
   const [selectedId, setSelectedId] = useState(salesLeads[0].id);
   const [refreshed, setRefreshed] = useState(false);
+  const [dialerOpen, setDialerOpen] = useState(false);
   const lead = salesLeads.find((item) => item.id === selectedId) ?? salesLeads[0];
 
   return (
@@ -34,7 +35,11 @@ const LeadEnrichment: React.FC = () => {
             <span className="sales-avatar sales-avatar--large">{lead.name.split(' ').map((part) => part[0]).join('')}</span>
             <div className="sales-profile-hero__text"><h2>{lead.name}</h2><p>{lead.company} · {lead.industry}</p><span><MapPin size={14} />{lead.location}</span></div>
             <div className="sales-profile-hero__actions">
-              <SalesCallButton contactName={lead.name} />
+              {lead.phone && (
+                <Button size="sm" variant="outline" icon={<Phone size={13} />} onClick={() => setDialerOpen(true)}>
+                  Call
+                </Button>
+              )}
               <Badge variant="success" dot>{refreshed ? 'Just enriched' : 'Profile verified'}</Badge>
             </div>
           </section>
@@ -61,6 +66,22 @@ const LeadEnrichment: React.FC = () => {
           <section className="sales-enrichment-activity"><h3>Enrichment activity</h3><p><CheckCircle2 size={14} /> Email and company profile verified from public business sources <span>{refreshed ? 'Just now' : 'Today, 9:42 AM'}</span></p><p><CheckCircle2 size={14} /> Phone number matched to company directory <span>Yesterday</span></p></section>
         </div>
       </div>
+      <DialerModal
+        open={dialerOpen}
+        onClose={() => setDialerOpen(false)}
+        initialPhone={lead.phone}
+        initialCandidateName={lead.name}
+        initialPurpose="general"
+        contactType="lead"
+        contactContext={{
+          company: lead.company,
+          email: lead.email,
+          designation: lead.designation,
+          status: lead.status,
+          score: lead.totalScore,
+          interest: lead.businessNeed,
+        }}
+      />
     </div>
   );
 };
