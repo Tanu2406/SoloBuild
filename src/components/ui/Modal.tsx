@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { Button } from './Button';
 
@@ -9,6 +10,7 @@ interface ModalProps {
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
   footer?: React.ReactNode;
+  portal?: boolean;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -18,6 +20,7 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   size = 'md',
   footer,
+  portal = false,
 }) => {
   useEffect(() => {
     if (open) {
@@ -30,7 +33,7 @@ export const Modal: React.FC<ModalProps> = ({
 
   if (!open) return null;
 
-  return (
+  const content = (
     <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
       <div
         className={`modal modal--${size}`}
@@ -47,6 +50,7 @@ export const Modal: React.FC<ModalProps> = ({
       </div>
     </div>
   );
+  return portal ? createPortal(content, document.body) : content;
 };
 
 const style = document.createElement('style');

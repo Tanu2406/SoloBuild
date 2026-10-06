@@ -391,7 +391,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const routeContextId = pathname.startsWith('/hiring') ||
     ['/candidates', '/screening-reports', '/recruiters', '/interviews', '/activity'].some((path) => pathname.startsWith(path))
     ? 'talent-acquisition'
-    : pathname === '/solutions/hr/talent-acquisition' || pathname.startsWith('/solutions/hr/talent-acquisition/')
+    : pathname === '/' || pathname.startsWith('/solutions/hr/talent-acquisition')
       ? 'talent-acquisition'
     : pathname === '/solutions/sales/lead-management'
       ? 'lead-management'
@@ -543,11 +543,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   >
                     {contextualSelection === 'lead-management' ? 'Sales / Lead Management' : 'Sales / Lead Qualification'}
                   </NavLink>
+                ) : contextualSelection === 'talent-acquisition' ? (
+                  <NavLink
+                    to="/solutions/hr/talent-acquisition"
+                    className={({ isActive }) =>
+                      `sidebar__context-label sidebar__context-label-link${isActive ? ' sidebar__context-label-link--active' : ''}`
+                    }
+                    onClick={() => {
+                      onNavigate();
+                      setMobileOpen(false);
+                    }}
+                  >
+                    HR Solutions / Talent Acquisition
+                  </NavLink>
                 ) : (
                   <p className="sidebar__context-label">
-                    {contextualSelection === 'talent-acquisition'
-                      ? 'HR Solutions / Talent Acquisition'
-                      : `${contextualGroup.name} / ${contextualGroup.items.find((item) => item.id === contextualSelection)?.name}`}
+                    {`${contextualGroup.name} / ${contextualGroup.items.find((item) => item.id === contextualSelection)?.name}`}
                   </p>
                 )}
                 {contextualSelection === 'talent-acquisition' ? (
@@ -639,6 +650,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                   navigateFromSidebar('/solutions/sales/lead-management');
                                 } else if (group.id === 'sales' && item.id === 'lead-qualification') {
                                   navigateFromSidebar('/coming-soon/lead-qualification');
+                                } else if (group.id === 'hr' && item.id === 'talent-acquisition') {
+                                  navigateFromSidebar('/solutions/hr/talent-acquisition');
                                 }
                               }}
                             >

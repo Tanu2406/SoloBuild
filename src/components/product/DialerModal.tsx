@@ -288,6 +288,7 @@ export const DialerModal: React.FC<DialerModalProps> = ({
       open={open}
       onClose={handleClose}
       size="sm"
+      portal
     >
       <div className="dialer">
         {/* ——— FORM SCREEN ——— */}
