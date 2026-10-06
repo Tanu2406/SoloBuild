@@ -646,6 +646,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {selectedSubmenu?.items.map((item) => {
                       const href = item.id === 'campaigns' && contextualSelection === 'lead-management'
                         ? `${selectedSubmenu.routePrefix}/campaigns`
+                        : contextualSelection === 'learning-development'
+                        ? item.id === 'learning-plans'
+                          ? selectedSubmenu.routePrefix
+                          : `${selectedSubmenu.routePrefix}/${item.id}`
                         : contextualGroup.id === 'hr' && contextualSelection !== 'employee-onboarding'
                         ? selectedSubmenu.routePrefix
                         : `${selectedSubmenu.routePrefix}/${item.id}`;
@@ -655,6 +659,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           className={({ isActive }) =>
                             `sidebar__context-link ${isActive ? 'sidebar__context-link--active' : ''}`
                           }
+                          end={contextualSelection === 'learning-development' && item.id === 'learning-plans' && !pathname.includes('/employee/')}
                           to={href}
                           onClick={() => {
                             onNavigate();
