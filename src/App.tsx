@@ -51,6 +51,13 @@ import Scheduling from './pages/sales/meeting/scheduling/Scheduling';
 import Rescheduling from './pages/sales/meeting/scheduling/Rescheduling';
 import MeetingReminders from './pages/sales/meeting/scheduling/Reminders';
 import MeetingSchedulingActivity from './pages/sales/meeting/scheduling/Activity';
+import OpportunityManagementDashboard from './pages/sales/opportunities/OpportunityManagementDashboard';
+import OpportunityTracking from './pages/sales/opportunities/OpportunityTracking';
+import DealQualification from './pages/sales/opportunities/DealQualification';
+import PipelineManagement from './pages/sales/opportunities/PipelineManagement';
+import DealUpdates from './pages/sales/opportunities/DealUpdates';
+import OpportunityFollowUps from './pages/sales/opportunities/FollowUps';
+import OpportunityActivity from './pages/sales/opportunities/Activity';
 
 // Styles
 import './styles/global.css';
@@ -112,6 +119,13 @@ const App: React.FC = () => {
                     <Route path="/coming-soon/meeting-scheduling/rescheduling" element={<Rescheduling />} />
                     <Route path="/coming-soon/meeting-scheduling/reminders" element={<MeetingReminders />} />
                     <Route path="/coming-soon/meeting-scheduling/activity" element={<MeetingSchedulingActivity />} />
+                    <Route path="/coming-soon/opportunity-management" element={<OpportunityManagementDashboard />} />
+                    <Route path="/coming-soon/opportunity-management/opportunity-tracking" element={<OpportunityTracking />} />
+                    <Route path="/coming-soon/opportunity-management/deal-qualification" element={<DealQualification />} />
+                    <Route path="/coming-soon/opportunity-management/pipeline-management" element={<PipelineManagement />} />
+                    <Route path="/coming-soon/opportunity-management/deal-updates" element={<DealUpdates />} />
+                    <Route path="/coming-soon/opportunity-management/follow-ups" element={<OpportunityFollowUps />} />
+                    <Route path="/coming-soon/opportunity-management/activity" element={<OpportunityActivity />} />
                     <Route path="/solutions/:group/:solution" element={<SolutionDestination />} />
                     <Route path="/coming-soon/:context/:item" element={<SolutionDestination />} />
                   </Routes>
