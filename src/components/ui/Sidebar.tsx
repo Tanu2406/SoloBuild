@@ -646,7 +646,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {selectedSubmenu?.items.map((item) => {
                       const href = item.id === 'campaigns' && contextualSelection === 'lead-management'
                         ? `${selectedSubmenu.routePrefix}/campaigns`
-                        : contextualGroup.id === 'hr'
+                        : contextualGroup.id === 'hr' && contextualSelection !== 'employee-onboarding'
                         ? selectedSubmenu.routePrefix
                         : `${selectedSubmenu.routePrefix}/${item.id}`;
                       return (

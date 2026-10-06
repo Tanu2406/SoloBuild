@@ -64,6 +64,7 @@ import ConversionAnalytics from './pages/sales/analytics/ConversionAnalytics';
 import RevenueInsights from './pages/sales/analytics/RevenueInsights';
 import Forecasting from './pages/sales/analytics/Forecasting';
 import ActivityAnalytics from './pages/sales/analytics/Activity';
+import EmployeeOnboarding from './pages/hr/EmployeeOnboarding';
 
 // Styles
 import './styles/global.css';
@@ -82,6 +83,7 @@ const App: React.FC = () => {
                   <Routes>
                     <Route path="/" element={<Home />} />
                     <Route path="/solutions/hr/talent-acquisition" element={<Home />} />
+                    <Route path="/solutions/hr/employee-onboarding/*" element={<EmployeeOnboarding />} />
                     <Route path="/hiring/create" element={<CreateHiring />} />
                     <Route path="/hiring/:id/screening" element={<ScreeningProgress />} />
                     <Route path="/hiring" element={<Hiring />} />
