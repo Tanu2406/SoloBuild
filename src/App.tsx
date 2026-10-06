@@ -44,6 +44,13 @@ import {
   SalesOutreachMeetingBooking,
   SalesOutreachPersonalized,
 } from './pages/sales/outreach/SalesOutreach';
+import MeetingSchedulingDashboard from './pages/sales/meeting/scheduling/MeetingSchedulingDashboard';
+import MeetingRequests from './pages/sales/meeting/scheduling/MeetingRequests';
+import Availability from './pages/sales/meeting/scheduling/Availability';
+import Scheduling from './pages/sales/meeting/scheduling/Scheduling';
+import Rescheduling from './pages/sales/meeting/scheduling/Rescheduling';
+import MeetingReminders from './pages/sales/meeting/scheduling/Reminders';
+import MeetingSchedulingActivity from './pages/sales/meeting/scheduling/Activity';
 
 // Styles
 import './styles/global.css';
@@ -98,6 +105,13 @@ const App: React.FC = () => {
                     <Route path="/coming-soon/sales-outreach/follow-ups" element={<SalesOutreachFollowUps />} />
                     <Route path="/coming-soon/sales-outreach/meeting-booking" element={<SalesOutreachMeetingBooking />} />
                     <Route path="/coming-soon/sales-outreach/activity" element={<SalesOutreachActivity />} />
+                    <Route path="/coming-soon/meeting-scheduling" element={<MeetingSchedulingDashboard />} />
+                    <Route path="/coming-soon/meeting-scheduling/meeting-requests" element={<MeetingRequests />} />
+                    <Route path="/coming-soon/meeting-scheduling/availability" element={<Availability />} />
+                    <Route path="/coming-soon/meeting-scheduling/scheduling" element={<Scheduling />} />
+                    <Route path="/coming-soon/meeting-scheduling/rescheduling" element={<Rescheduling />} />
+                    <Route path="/coming-soon/meeting-scheduling/reminders" element={<MeetingReminders />} />
+                    <Route path="/coming-soon/meeting-scheduling/activity" element={<MeetingSchedulingActivity />} />
                     <Route path="/solutions/:group/:solution" element={<SolutionDestination />} />
                     <Route path="/coming-soon/:context/:item" element={<SolutionDestination />} />
                   </Routes>
