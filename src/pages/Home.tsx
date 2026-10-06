@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Phone, Briefcase, ChevronRight,
-  CheckCircle2, AlertCircle, PauseCircle,
-  Play, Users, PhoneCall, Sparkles
+  AlertCircle, PauseCircle,
+  Play, Users, PhoneCall, Sparkles, Loader2
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { HiringStatusBadge, CandidateStatusBadge } from '../components/ui/Badge';
@@ -13,6 +13,7 @@ import { DialerModal } from '../components/product/DialerModal';
 import { CandidateDrawer } from '../components/product/CandidateDrawer';
 import { useAppStore, useHirings, useCandidates, useActivity, useRecruiters } from '../store/appStore';
 import { callSimulationService } from '../services/callSimulationService';
+import { listCampaignCandidates, listCampaigns, mapCampaignCandidate } from '../services/campaignService';
 import { useToast } from '../components/ui/Toast';
 import type { Candidate, Hiring } from '../types';
 
@@ -24,6 +25,9 @@ const Home: React.FC = () => {
   const candidates = useCandidates();
   const activity = useActivity();
   const recruiters = useRecruiters();
+  const [campaignCandidates, setCampaignCandidates] = useState<Candidate[]>([]);
+  const [loadingCampaignCandidates, setLoadingCampaignCandidates] = useState(true);
+  const [campaignCandidatesError, setCampaignCandidatesError] = useState('');
 
   // Dialog & Drawer state
   const [dialerOpen, setDialerOpen] = useState(false);
@@ -43,10 +47,42 @@ const Home: React.FC = () => {
   const connectRate = totalContacted > 0 ? Math.round((totalConnected / totalContacted) * 100) : 0;
   const shortlistRate = totalContacted > 0 ? Math.round((totalShortlisted / totalContacted) * 100) : 0;
 
-  // Candidates awaiting review (shortlisted or interested)
-  const candidatesForReview = candidates
-    .filter(c => c.status === 'shortlisted' || c.status === 'interested')
-    .slice(0, 5);
+  useEffect(() => {
+    let cancelled = false;
+    const loadCampaignCandidates = async () => {
+      try {
+        const campaigns = await listCampaigns();
+        const results = await Promise.all(campaigns.map(async campaign => ({
+          campaign,
+          result: await Promise.allSettled([listCampaignCandidates(campaign.id)]).then(items => items[0]),
+        })));
+        if (cancelled) return;
+
+        const warnings: string[] = [];
+        const apiCandidates = results.flatMap(({ campaign, result }) => {
+          if (result.status === 'rejected') {
+            warnings.push(`${campaign.title}: ${result.reason instanceof Error ? result.reason.message : 'candidate list failed'}`);
+            return [];
+          }
+          return result.value.map(candidate => mapCampaignCandidate(candidate, undefined, campaign.title));
+        });
+        apiCandidates.sort((left, right) =>
+          Date.parse(right.candidateUpdatedAt ?? '') - Date.parse(left.candidateUpdatedAt ?? ''),
+        );
+        setCampaignCandidates(apiCandidates);
+        setCampaignCandidatesError(warnings.join(' '));
+      } catch (error) {
+        if (cancelled) return;
+        setCampaignCandidatesError(error instanceof Error ? error.message : 'Failed to load campaign candidates.');
+      } finally {
+        if (!cancelled) setLoadingCampaignCandidates(false);
+      }
+    };
+    void loadCampaignCandidates();
+    return () => { cancelled = true; };
+  }, []);
+
+  const recentCampaignCandidates = campaignCandidates.slice(0, 5);
 
   const handleInspectCandidate = (cand: Candidate) => {
     setSelectedCandidate(cand);
@@ -356,90 +392,103 @@ const Home: React.FC = () => {
             </div>
           </div>
 
-          {/* ATTENTION QUEUE: CANDIDATES READY FOR REVIEW */}
-          {candidatesForReview.length > 0 && (
-            <div className="table-container">
-              <div className="table-toolbar" style={{ background: 'var(--status-success-bg)', borderBottomColor: 'var(--status-success-border)' }}>
-                <div className="table-toolbar__left">
-                  <CheckCircle2 size={16} color="var(--status-success-text)" />
-                  <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--status-success-text)' }}>
-                    Action Required: {candidatesForReview.length} Candidates Qualified & Ready for HR Review
-                  </span>
-                </div>
-                <div className="table-toolbar__right">
-                  <Button variant="ghost" size="sm" onClick={() => navigate('/candidates')}>
-                    View all candidates <ChevronRight size={13} />
-                  </Button>
-                </div>
+          {/* Candidates loaded from the campaign APIs */}
+          <div className="table-container">
+            <div className="table-toolbar" style={{ background: 'var(--status-success-bg)', borderBottomColor: 'var(--status-success-border)' }}>
+              <div className="table-toolbar__left">
+                <Users size={16} color="var(--status-success-text)" />
+                <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--status-success-text)' }}>
+                  Candidates Across Campaigns
+                </span>
+                {loadingCampaignCandidates && <Loader2 size={14} className="spin" aria-label="Loading candidates" />}
               </div>
+              <div className="table-toolbar__right">
+                <Button variant="ghost" size="sm" onClick={() => navigate('/candidates')}>
+                  View all candidates <ChevronRight size={13} />
+                </Button>
+              </div>
+            </div>
 
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Candidate</th>
-                      <th>Role</th>
-                      <th>Status</th>
-                      <th>Call Duration</th>
-                      <th style={{ textAlign: 'right' }}>Review</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {candidatesForReview.map(cand => (
-                      <tr key={cand.id} onClick={() => handleInspectCandidate(cand)}>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Avatar name={cand.name} size="sm" color="var(--brand-primary)" />
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{cand.name}</span>
-                              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>{cand.phone}</span>
-                            </div>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Candidate</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Call Duration</th>
+                    <th style={{ textAlign: 'right' }}>Review</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentCampaignCandidates.map(cand => (
+                    <tr key={`${cand.hiringId}-${cand.id}`} onClick={() => handleInspectCandidate(cand)}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Avatar name={cand.name} size="sm" color="var(--brand-primary)" />
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{cand.name}</span>
+                            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>{cand.phone}</span>
                           </div>
-                        </td>
-                        <td>
-                          <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)' }}>
-                            {cand.hiringTitle || '—'}
-                          </span>
-                        </td>
-                        <td>
-                          <CandidateStatusBadge status={cand.status} />
-                        </td>
-                        <td>
-                          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)' }}>
-                            {cand.callDuration || '—'}
-                          </span>
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
+                        </div>
+                      </td>
+                      <td>
+                        <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)' }}>
+                          {cand.hiringTitle || '—'}
+                        </span>
+                      </td>
+                      <td>
+                        <CandidateStatusBadge status={cand.status} />
+                      </td>
+                      <td>
+                        <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)' }}>
+                          {cand.callDuration || '—'}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleInspectCandidate(cand);
+                          }}
+                        >
+                          Inspect
+                        </Button>
+                        {cand.hiringId && (
                           <Button
-                            variant="secondary"
+                            variant="ghost"
                             size="sm"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleInspectCandidate(cand);
+                              navigate(`/screening-reports/${cand.hiringId}/candidate/${cand.id}`);
                             }}
                           >
-                            Inspect
+                            Report
                           </Button>
-                          {cand.hiringId && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate(`/screening-reports/${cand.hiringId}/candidate/${cand.id}`);
-                              }}
-                            >
-                              Report
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {!loadingCampaignCandidates && recentCampaignCandidates.length === 0 && (
+                    <tr>
+                      <td colSpan={5} style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                        {campaignCandidatesError
+                          ? `Campaign candidates could not be loaded: ${campaignCandidatesError}`
+                          : 'No candidates are available in your campaigns yet.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-          )}
+            {campaignCandidatesError && recentCampaignCandidates.length > 0 && (
+              <div role="status" style={{ padding: '8px 16px', color: 'var(--status-warning-text)', fontSize: 'var(--font-size-xs)' }}>
+                Some campaign candidates could not be loaded: {campaignCandidatesError}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* RIGHT: REAL-TIME STREAM */}
