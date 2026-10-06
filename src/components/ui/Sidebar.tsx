@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { useHirings, useCandidates, useInterviews } from '../../store/appStore';
+import { useAuth } from '../../context/AuthContext';
 
 interface NavItem {
   path: string;
@@ -360,6 +361,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   recentChats,
   selectedChatId,
 }) => {
+  const { logout, user } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -752,10 +754,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               aria-label="TalentCorp profile menu"
               onClick={() => setProfileOpen((open) => !open)}
             >
-              <span className="sidebar__workspace-avatar">TC</span>
+              <span className="sidebar__workspace-avatar">{user?.name ? user.name[0].toUpperCase() : 'TC'}</span>
               <span className="sidebar__workspace-info">
-                <span className="sidebar__workspace-name">TalentCorp</span>
-                <span className="sidebar__workspace-email">admin@talentcorp.com</span>
+                <span className="sidebar__workspace-name">{user?.name || 'TalentCorp'}</span>
+                <span className="sidebar__workspace-email">{user?.email || 'admin@talentcorp.com'}</span>
               </span>
               <ChevronDown size={13} className={profileOpen ? 'sidebar__profile-chevron sidebar__profile-chevron--open' : 'sidebar__profile-chevron'} />
             </button>
@@ -768,7 +770,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <User size={14} /> Profile
                 </button>
                 <div className="sidebar__profile-divider" />
-                <button type="button" className="sidebar__profile-signout" onClick={() => setProfileOpen(false)}>
+                <button type="button" className="sidebar__profile-signout" onClick={() => { setProfileOpen(false); logout(); }}>
                   <LogOut size={14} /> Sign out
                 </button>
               </div>

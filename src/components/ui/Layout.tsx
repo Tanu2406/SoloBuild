@@ -6,6 +6,7 @@ import { GlobalSearch } from './GlobalSearch';
 import { ChatMode } from './ChatMode';
 import type { ChatConversationSummary } from './ChatMode';
 import { useInterviews, useActivity } from '../../store/appStore';
+import { useAuth } from '../../context/AuthContext';
 
 // ─── Scope filter chips shown left of search ───
 const SCOPE_CHIPS = [
@@ -36,6 +37,7 @@ interface LayoutProps {
 }
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
+  const { logout, user } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -277,8 +279,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                     <div className="app-topbar__profile-meta">
                       <div className="app-topbar__avatar app-topbar__avatar--lg">TC</div>
                       <div>
-                        <span className="app-topbar__dropdown-title">TalentCorp</span>
-                        <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)', display: 'block' }}>admin@talentcorp.com</span>
+                        <span className="app-topbar__dropdown-title">{user?.name || 'TalentCorp'}</span>
+                        <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)', display: 'block' }}>{user?.email || 'admin@talentcorp.com'}</span>
                       </div>
                     </div>
                   </div>
@@ -290,7 +292,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                       <User size={14} /> Profile
                     </button>
                     <div className="app-topbar__menu-divider" />
-                    <button className="app-topbar__menu-item app-topbar__menu-item--danger" onClick={() => setProfileOpen(false)}>
+                    <button className="app-topbar__menu-item app-topbar__menu-item--danger" onClick={() => { setProfileOpen(false); logout(); }}>
                       <LogOut size={14} /> Sign out
                     </button>
                   </div>

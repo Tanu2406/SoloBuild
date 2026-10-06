@@ -59,6 +59,8 @@ export interface Hiring {
   aiRecruiterId?: string;
   interviewInstructions?: string;
   candidateCount: number;    // derived: candidateIds.length
+  backendCampaign?: boolean;
+  campaignCandidatesLoaded?: boolean;
   contacted: number;         // derived from candidates
   connected: number;
   interested: number;
@@ -95,6 +97,8 @@ export interface Candidate {
   missingRequirements?: string[];
   aiRecommendation?: string;
   includedInCallList?: boolean;
+  documentScreeningId?: string;
+  documentScreeningSummary?: string;
   // Call assessment fields (post-call)
   callAssessmentScore?: number;          // 0-10
   callAssessmentLabel?: AIHireLabel;     // overall recommendation label
@@ -280,8 +284,8 @@ export interface EvidenceItem {
 
 // ——— Resume Screening Report (Section 1) ———
 export interface ResumeScreeningReport {
-  matchScore: number;                  // 0-100
-  compatibility: 'compatible' | 'not_compatible';
+  matchScore: number | null;            // 0-100
+  compatibility: 'compatible' | 'not_compatible' | null;
   resumeLabel: string;                 // "Strong Match" | "Moderate Match" | "Not a Match"
   strongMatches: string[];
   missingRequirements: string[];
@@ -328,4 +332,3 @@ export interface CandidateScreeningReportData {
     recommendedNextStep: string;
   };
 }
-

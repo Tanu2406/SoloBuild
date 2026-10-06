@@ -11,7 +11,7 @@
 // Schedule Interview: reuses existing ScheduleInterviewModal.
 // ============================================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Download, Calendar, CheckCircle2,
@@ -27,7 +27,8 @@ import { CapabilityMap } from '../components/product/CapabilityMap';
 import { SkillsBreakdown } from '../components/product/SkillsBreakdown';
 import { DimensionScorecard } from '../components/product/DimensionScorecard';
 import { ScheduleInterviewModal } from '../components/product/ScheduleInterviewModal';
-import { useCandidate } from '../store/appStore';
+import { useAppStore, useCandidate } from '../store/appStore';
+import { applyDocumentScreening, getCandidateDocumentScreening } from '../services/campaignService';
 import { screeningReportService } from '../services/screeningReportService';
 import { useToast } from '../components/ui/Toast';
 import type { AIHireLabel } from '../types';
@@ -155,10 +156,54 @@ const CandidateScreeningReport: React.FC = () => {
   const { candidateId, hiringId } = useParams<{ candidateId: string; hiringId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { dispatch } = useAppStore();
 
   const candidate = useCandidate(candidateId ?? '');
   const [activeTab, setActiveTab] = useState<ReportTab>('overview');
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [screeningRefreshError, setScreeningRefreshError] = useState('');
+
+  useEffect(() => {
+    if (!hiringId || !candidateId) return;
+    let cancelled = false;
+    setScreeningRefreshError('');
+    getCandidateDocumentScreening(hiringId, candidateId)
+      .then(screening => {
+        if (!cancelled) {
+          const screeningData = applyDocumentScreening({
+            id: candidateId,
+            name: '',
+            phone: '',
+            status: 'added',
+          }, screening);
+          dispatch({
+            type: 'UPDATE_CANDIDATE',
+            payload: {
+              id: candidateId,
+              updates: {
+                matchScore: screeningData.matchScore,
+                compatibility: screeningData.compatibility,
+                strongMatches: screeningData.strongMatches,
+                missingRequirements: screeningData.missingRequirements,
+                aiRecommendation: screeningData.aiRecommendation,
+                aiSummary: screeningData.aiSummary,
+                documentScreeningId: screeningData.documentScreeningId,
+                documentScreeningSummary: screeningData.documentScreeningSummary,
+                includedInCallList: screeningData.includedInCallList,
+              },
+            },
+          });
+        }
+      })
+      .catch(err => {
+        if (!cancelled) {
+          setScreeningRefreshError(
+            err instanceof Error ? err.message : 'Failed to refresh document screening results.',
+          );
+        }
+      });
+    return () => { cancelled = true; };
+  }, [hiringId, candidateId, dispatch]);
 
   // Inject print CSS once
   React.useEffect(() => { injectPrintStyles(); }, []);
@@ -203,24 +248,44 @@ const CandidateScreeningReport: React.FC = () => {
     { id: 'overview', label: 'Overview' },
     { id: 'resume', label: 'Resume Screening' },
     { id: 'call', label: `AI Call Assessment${callComplete ? '' : ' ·  Pending'}` },
-    { id: 'capability', label: 'Capability Analysis' },
+    ...(!candidate.documentScreeningId
+      ? [{ id: 'capability', label: 'Capability Analysis' }]
+      : []),
     { id: 'evidence', label: 'Evidence' },
   ];
 
   // ─── Score bar for resume match ─────────────────────────
   const matchPct = resumeScreening.matchScore;
-  const matchColor = matchPct >= 80
+  const matchColor = matchPct === null
+    ? 'var(--text-secondary)'
+    : matchPct >= 80
     ? 'var(--status-success-text)'
     : matchPct >= 60 ? 'var(--brand-primary)' : 'var(--status-error-text)';
-  const matchBg = matchPct >= 80
+  const matchBg = matchPct === null
+    ? 'var(--bg-subtle)'
+    : matchPct >= 80
     ? 'var(--status-success-bg)'
     : matchPct >= 60 ? 'var(--brand-primary-light)' : 'var(--status-error-bg)';
-  const matchBorder = matchPct >= 80
+  const matchBorder = matchPct === null
+    ? 'var(--border-default)'
+    : matchPct >= 80
     ? 'var(--status-success-border)'
     : matchPct >= 60 ? 'var(--brand-primary-border)' : 'var(--status-error-border)';
 
   return (
     <div className="page-content animate-fade-in" style={{ maxWidth: '900px' }}>
+      {screeningRefreshError && (
+        <div role="alert" style={{
+          display: 'flex', alignItems: 'flex-start', gap: '8px',
+          padding: '12px 14px', marginBottom: '14px',
+          background: 'var(--status-warning-bg)', border: '1px solid var(--status-warning-border)',
+          borderRadius: 'var(--radius-md)', color: 'var(--status-warning-text)',
+          fontSize: 'var(--font-size-sm)',
+        }}>
+          <AlertTriangle size={15} />
+          <span>Could not refresh this candidate’s document screening: {screeningRefreshError}</span>
+        </div>
+      )}
 
       {/* ── Back nav ── */}
       <button
@@ -485,7 +550,7 @@ const CandidateScreeningReport: React.FC = () => {
                 border: `1px solid ${matchBorder}`, borderRadius: 'var(--radius-md)',
                 marginBottom: '12px',
               }}>
-                <span style={{ fontSize: 'var(--font-size-xl)', fontWeight: 800, color: matchColor }}>{matchPct}%</span>
+                <span style={{ fontSize: 'var(--font-size-xl)', fontWeight: 800, color: matchColor }}>{matchPct === null ? '—' : `${matchPct}%`}</span>
                 <div>
                   <p style={{ fontSize: 'var(--font-size-sm)', fontWeight: 700, color: matchColor }}>{resumeScreening.resumeLabel}</p>
                   <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)' }}>JD compatibility score</p>
@@ -604,7 +669,7 @@ const CandidateScreeningReport: React.FC = () => {
           </div>
 
           {/* Capability map compact preview */}
-          {capabilityAnalysis.competencies.length > 0 && (
+          {!candidate.documentScreeningId && capabilityAnalysis.competencies.length > 0 && (
             <SectionCard
               title="Capability Overview"
               subtitle="Top competencies evaluated against role requirements"
@@ -649,7 +714,7 @@ const CandidateScreeningReport: React.FC = () => {
                 border: `1px solid ${matchBorder}`, borderRadius: 'var(--radius-md)', flex: 1,
               }}>
                 <span style={{ fontSize: 'var(--font-size-4xl)', fontWeight: 800, color: matchColor }}>
-                  {matchPct}%
+                  {matchPct === null ? '—' : `${matchPct}%`}
                 </span>
                 <div>
                   <p style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: matchColor }}>

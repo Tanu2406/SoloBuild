@@ -1,77 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  CheckCircle2, Loader2, Sparkles, TrendingUp, X,
-  ChevronRight, AlertCircle
+  AlertCircle, CheckCircle2, Loader2, Sparkles, TrendingUp, X,
+  ChevronRight
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Avatar } from '../components/ui/Avatar';
 import { useAppStore, useHiring, useRecruiters } from '../store/appStore';
 import type { Candidate } from '../types';
-
-// ——— Mock resume pool to generate screening results ———
-const FIRST_NAMES = ['Arjun', 'Priya', 'Ravi', 'Ananya', 'Karan', 'Meera', 'Siddharth', 'Nisha',
-  'Amit', 'Pooja', 'Rohan', 'Divya', 'Aditya', 'Sneha', 'Vikram', 'Kavya',
-  'Rahul', 'Isha', 'Nikhil', 'Tanvi', 'Harsh', 'Prerna', 'Gaurav', 'Simran'];
-const LAST_NAMES = ['Sharma', 'Patel', 'Singh', 'Kumar', 'Gupta', 'Mehta', 'Joshi', 'Nair',
-  'Reddy', 'Desai', 'Kapoor', 'Bose', 'Iyer', 'Malhotra', 'Rao', 'Banerjee'];
-
-function randItem<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
-
-function generateMockCandidates(hiringId: string, hiringTitle: string, count: number): Candidate[] {
-  const skillPools: Record<string, string[][]> = {
-    default: [
-      ['Communication', 'Teamwork', 'MS Office'],
-      ['Leadership', 'Problem Solving', 'Excel'],
-      ['Project Management', 'Agile', 'Jira'],
-    ],
-  };
-  const pools = skillPools.default;
-
-  return Array.from({ length: count }, (_, i) => {
-    const name = `${randItem(FIRST_NAMES)} ${randItem(LAST_NAMES)}`;
-    const expYears = 1 + Math.floor(Math.random() * 8);
-    const score = 35 + Math.floor(Math.random() * 62);
-    const compatible = score >= 60;
-    const skills = [...randItem(pools), ...(Math.random() > 0.5 ? [randItem(['Python', 'React', 'SQL', 'Salesforce', 'AWS'])] : [])];
-    const missing = compatible
-      ? (Math.random() > 0.5 ? [randItem(['Kubernetes', 'GraphQL', 'Workday', 'Salesforce'])] : [])
-      : [randItem(['Core experience', 'Domain knowledge', 'Required certification']),
-         randItem(['3+ years exp', 'CRM skills', 'Enterprise exposure'])];
-
-    return {
-      id: `c_${hiringId}_screen_${i}`,
-      name,
-      phone: `+91 ${Math.floor(70000 + Math.random() * 29999)} ${Math.floor(10000 + Math.random() * 89999)}`,
-      email: `${name.toLowerCase().replace(' ', '.')}@email.com`,
-      position: hiringTitle,
-      experience: `${expYears} year${expYears !== 1 ? 's' : ''}`,
-      skills,
-      education: randItem(['B.Tech, IIT', 'MBA, IIM', 'B.Com, DU', 'B.Tech, NIT', 'MCA, Pune Univ', 'BBA, Symbiosis']),
-      hiringId,
-      hiringTitle,
-      status: 'added' as const,
-      matchScore: score,
-      compatibility: compatible ? 'compatible' : 'not_compatible',
-      strongMatches: skills.slice(0, Math.max(1, skills.length - missing.length)),
-      missingRequirements: missing,
-      aiRecommendation: compatible
-        ? score >= 80 ? 'Strongly compatible — excellent profile match'
-        : 'Compatible — meets core requirements'
-        : 'Not compatible — insufficient experience or missing key skills',
-      includedInCallList: compatible,
-      lastActivity: '—',
-    };
-  });
-}
-
-const STAGES = [
-  { id: 'upload',    label: 'Processing resumes',              sub: 'Extracting candidate information from files' },
-  { id: 'extract',   label: 'Extracting candidate information', sub: 'Parsing names, experience, education, skills' },
-  { id: 'evaluate',  label: 'Evaluating against JD',           sub: 'Scoring each resume against the job requirements' },
-  { id: 'match',     label: 'JD ↔ Resume matching',            sub: 'Calculating compatibility scores and fit analysis' },
-  { id: 'results',   label: 'Generating screening results',    sub: 'Finalising compatible and non-compatible candidates' },
-];
+import {
+  getCandidateDocumentScreening,
+  getScreeningStatus,
+  listCampaignCandidates,
+  listCampaignDocumentScreenings,
+  mapCampaignCandidate,
+} from '../services/campaignService';
+import type { ScreeningBatchStatus } from '../services/campaignService';
 
 const ScreeningProgress: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -81,67 +25,95 @@ const ScreeningProgress: React.FC = () => {
   const hiring = useHiring(id || '');
   const recruiters = useRecruiters();
 
-  const resumeCount = parseInt(searchParams.get('resumes') || '5', 10);
-  const mode = searchParams.get('mode') as 'screen_only' | 'screen_and_call' || 'screen_only';
+  const requestedResumeCount = parseInt(searchParams.get('resumes') || '0', 10);
+  const batchId = searchParams.get('batch_id');
+  const missingBatchMessage = !id || !batchId
+    ? 'This screening session is missing its campaign or batch ID.'
+    : '';
 
-  const [currentStage, setCurrentStage] = useState(0);   // 0-4 = stages, 5 = done
   const [done, setDone] = useState(false);
-  const [generatedCandidates, setGeneratedCandidates] = useState<Candidate[]>([]);
+  const [screenedCandidates, setScreenedCandidates] = useState<Candidate[]>([]);
+  const [batchStatus, setBatchStatus] = useState<ScreeningBatchStatus | null>(null);
+  const [error, setError] = useState('');
 
-  const compatible = generatedCandidates.filter(c => c.compatibility === 'compatible');
-  const incompatible = generatedCandidates.filter(c => c.compatibility === 'not_compatible');
+  const compatible = screenedCandidates.filter(c => c.compatibility === 'compatible');
+  const incompatible = screenedCandidates.filter(c => c.compatibility === 'not_compatible');
+  const resumeCount = batchStatus?.total_candidates || screenedCandidates.length || requestedResumeCount;
+  const screeningError = error || missingBatchMessage;
 
   useEffect(() => {
-    if (!hiring) return;
+    if (!id || !batchId) return;
 
-    // Generate mock candidates once
-    const mocks = generateMockCandidates(hiring.id, hiring.title, resumeCount);
-    setGeneratedCandidates(mocks);
+    let cancelled = false;
+    let timer: number | undefined;
 
-    // Animate through stages
-    let stage = 0;
-    const delays = [600, 900, 1100, 900, 800];
+    const pollStatus = async () => {
+      try {
+        const status = await getScreeningStatus(id, batchId);
+        if (cancelled) return;
+        setBatchStatus(status);
+        const normalizedStatus = status.status.toLowerCase();
 
-    const advance = () => {
-      if (stage >= STAGES.length) {
-        setDone(true);
+        if (['failed', 'failure', 'error', 'cancelled', 'canceled'].includes(normalizedStatus)) {
+          setError(`Screening ${normalizedStatus}${status.failed ? ` (${status.failed} candidate${status.failed === 1 ? '' : 's'} failed)` : ''}.`);
+          return;
+        }
 
-        // Persist to store
-        dispatch({ type: 'ADD_CANDIDATES', payload: { hiringId: hiring.id, candidates: mocks } });
-        dispatch({
-          type: 'UPDATE_HIRING',
-          payload: { id: hiring.id, updates: { status: 'screened', resumeCount } },
-        });
-        dispatch({
-          type: 'ADD_ACTIVITY',
-          payload: {
-            id: `act_sc_${Date.now()}`,
-            type: 'screening_completed',
-            hiringTitle: hiring.title,
-            description: `${resumeCount} resumes screened — ${mocks.filter(c => c.compatibility === 'compatible').length} compatible, ${mocks.filter(c => c.compatibility === 'not_compatible').length} not compatible`,
-            timestamp: new Date().toISOString(),
-            timeAgo: 'just now',
-          },
-        });
+        if (['completed', 'complete', 'success', 'succeeded', 'done'].includes(normalizedStatus)) {
+          const [candidates, bulkScreenings] = await Promise.all([
+            listCampaignCandidates(id),
+            listCampaignDocumentScreenings(id),
+          ]);
+          const screeningByCandidate = new Map(
+            bulkScreenings.map(screening => [screening.candidate_id, screening]),
+          );
+          const missingScreenings = candidates.filter(candidate => !screeningByCandidate.has(candidate.id));
+          const individualScreenings = await Promise.all(
+            missingScreenings.map(candidate => getCandidateDocumentScreening(id, candidate.id)),
+          );
+          individualScreenings.forEach(screening => screeningByCandidate.set(screening.candidate_id, screening));
 
-        // If screen_and_call, also mark ready to start simulation after redirect
-        if (mode === 'screen_and_call') {
-          // Will be handled in HiringWorkspace after redirect
+          if (cancelled) return;
+          const results = candidates.map(candidate => mapCampaignCandidate(
+            candidate,
+            screeningByCandidate.get(candidate.id),
+            hiring?.title ?? '',
+          ));
+          setScreenedCandidates(results);
+          setDone(true);
+          dispatch({ type: 'ADD_CANDIDATES', payload: { hiringId: id, candidates: results } });
           dispatch({
             type: 'UPDATE_HIRING',
-            payload: { id: hiring.id, updates: { status: 'ready' } },
+            payload: { id, updates: { status: 'screened', resumeCount: results.length } },
           });
+          dispatch({
+            type: 'ADD_ACTIVITY',
+            payload: {
+              id: `act_sc_${Date.now()}`,
+              type: 'screening_completed',
+              hiringTitle: hiring?.title ?? '',
+              description: `${results.length} resumes screened — ${results.filter(c => c.compatibility === 'compatible').length} compatible, ${results.filter(c => c.compatibility === 'not_compatible').length} not compatible`,
+              timestamp: new Date().toISOString(),
+              timeAgo: 'just now',
+            },
+          });
+          return;
         }
-        return;
+
+        timer = window.setTimeout(() => { void pollStatus(); }, 1500);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to retrieve screening status.');
+        }
       }
-      setCurrentStage(stage);
-      stage++;
-      setTimeout(advance, delays[stage - 1] || 800);
     };
 
-    const t = setTimeout(advance, 400);
-    return () => clearTimeout(t);
-  }, [hiring?.id]);
+    void pollStatus();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [id, batchId, requestedResumeCount, hiring?.title, dispatch]);
 
   const handleViewResults = () => {
     navigate(`/hiring/${id}?tab=screening`);
@@ -175,45 +147,25 @@ const ScreeningProgress: React.FC = () => {
         {recruiter && (
           <div className="sp-recruiter-badge">
             <Avatar name={recruiter.name} size="sm" color={recruiter.avatarColor} />
-            <span>{recruiter.name} will call compatible candidates</span>
+            <span>{recruiter.name} is assigned to this campaign</span>
           </div>
         )}
 
-        {/* Progress stages */}
-        <div className="sp-stages">
-          {STAGES.map((stage, i) => {
-            const isComplete = done || i < currentStage;
-            const isActive = !done && i === currentStage;
-            return (
-              <div key={stage.id} className={`sp-stage ${isComplete ? 'sp-stage--done' : isActive ? 'sp-stage--active' : 'sp-stage--pending'}`}>
-                <div className="sp-stage__icon">
-                  {isComplete ? (
-                    <CheckCircle2 size={18} />
-                  ) : isActive ? (
-                    <Loader2 size={18} className="spin" />
-                  ) : (
-                    <div className="sp-stage__dot" />
-                  )}
-                </div>
-                <div className="sp-stage__text">
-                  <span className="sp-stage__label">{stage.label}</span>
-                  {(isActive || isComplete) && (
-                    <span className="sp-stage__sub">{stage.sub}</span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Counter animation */}
-        {!done && (
+        {/* Backend screening status */}
+        {!done && !screeningError && (
           <div className="sp-counter">
             <Loader2 size={16} className="spin" style={{ color: 'var(--brand-primary)' }} />
             <span>
-              Processing{' '}
-              <strong>{resumeCount}</strong> resume{resumeCount !== 1 ? 's' : ''}…
+              Screening status: <strong>{batchStatus?.status ?? 'Starting'}</strong>
+              {batchStatus && ` · ${batchStatus.processed} of ${batchStatus.total_candidates} candidates processed`}
             </span>
+          </div>
+        )}
+
+        {screeningError && (
+          <div className="sp-error" role="alert">
+            <AlertCircle size={16} />
+            <span>{screeningError}</span>
           </div>
         )}
 
@@ -249,7 +201,9 @@ const ScreeningProgress: React.FC = () => {
                   <Avatar name={c.name} size="sm" color="var(--brand-primary)" />
                   <div className="sp-top-candidate__info">
                     <span className="sp-top-candidate__name">{c.name}</span>
-                    <span className="sp-top-candidate__exp">{c.experience} · {c.education}</span>
+                    <span className="sp-top-candidate__exp">
+                      {[c.experience, c.education].filter(Boolean).join(' · ') || c.email || 'Candidate'}
+                    </span>
                   </div>
                   <div className="sp-top-candidate__score" style={{
                     color: (c.matchScore || 0) >= 80 ? 'var(--status-success-text)' : 'var(--brand-primary)',
@@ -265,15 +219,6 @@ const ScreeningProgress: React.FC = () => {
                 </p>
               )}
             </div>
-
-            {mode === 'screen_and_call' && (
-              <div className="sp-auto-call-note">
-                <AlertCircle size={14} style={{ color: 'var(--status-info-text)', flexShrink: 0 }} />
-                <span>
-                  <strong>Screen &amp; Start Calling</strong> — compatible candidates will begin receiving calls once you reach the workspace.
-                </span>
-              </div>
-            )}
 
             <Button
               variant="primary"
@@ -353,41 +298,17 @@ function injectScreeningStyles() {
   font-weight: 500;
   width: fit-content;
 }
-.sp-stages {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.sp-stage {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 10px 14px;
-  border-radius: var(--radius-md);
-  transition: background var(--transition-fast);
-}
-.sp-stage--active { background: var(--brand-primary-light); }
-.sp-stage--done { opacity: 0.7; }
-.sp-stage--pending { opacity: 0.35; }
-.sp-stage__icon {
-  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; margin-top: 1px;
-}
-.sp-stage--done .sp-stage__icon { color: var(--status-success-text); }
-.sp-stage--active .sp-stage__icon { color: var(--brand-primary); }
-.sp-stage--pending .sp-stage__icon { color: var(--text-muted); }
-.sp-stage__dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--text-muted); margin: 5px;
-}
-.sp-stage__text { display: flex; flex-direction: column; gap: 2px; }
-.sp-stage__label { font-size: var(--font-size-base); font-weight: 600; color: var(--text-primary); }
-.sp-stage__sub { font-size: var(--font-size-xs); color: var(--text-secondary); }
 .sp-counter {
   display: flex; align-items: center; gap: 8px;
   font-size: var(--font-size-sm); color: var(--text-secondary);
   padding: 10px 14px; background: var(--bg-subtle);
   border-radius: var(--radius-md);
+}
+.sp-error {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 12px 14px; background: var(--status-error-bg);
+  border: 1px solid var(--status-error-border); border-radius: var(--radius-md);
+  font-size: var(--font-size-sm); color: var(--status-error-text); line-height: 1.5;
 }
 .sp-results {
   display: flex; flex-direction: column; gap: 16px;
@@ -440,12 +361,6 @@ function injectScreeningStyles() {
 .sp-top-candidate__score {
   font-size: var(--font-size-xs); font-weight: 700;
   padding: 3px 8px; border-radius: var(--radius-full);
-}
-.sp-auto-call-note {
-  display: flex; align-items: flex-start; gap: 8px;
-  padding: 10px 14px; background: var(--status-info-bg);
-  border: 1px solid var(--status-info-border); border-radius: var(--radius-md);
-  font-size: var(--font-size-xs); color: var(--status-info-text); line-height: 1.5;
 }
     `;
     document.head.appendChild(s);

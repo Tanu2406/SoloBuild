@@ -1,8 +1,19 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Layout } from './components/ui/Layout';
 import { ToastProvider } from './components/ui/Toast';
 import { AppProvider } from './store/appStore';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import AuthPage from './pages/AuthPage';
+
+// ——— Route guard: redirects to /login if not authenticated ———
+const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
+  if (isLoading) return null; // wait for session check
+  if (!isAuthenticated) return <Navigate to="/login" state={{ from: location }} replace />;
+  return <>{children}</>;
+};
 
 // Pages
 import Home from './pages/Home';
@@ -72,81 +83,87 @@ import './styles/sales-qualification.css';
 const App: React.FC = () => {
   return (
     <BrowserRouter>
-      <AppProvider>
-        <ToastProvider>
-          <Routes>
-            <Route
-              path="/*"
-              element={
-                <Layout>
-                  <Routes>
-                    <Route path="/" element={<Home />} />
-                    <Route path="/solutions/hr/talent-acquisition" element={<Home />} />
-                    <Route path="/hiring/create" element={<CreateHiring />} />
-                    <Route path="/hiring/:id/screening" element={<ScreeningProgress />} />
-                    <Route path="/hiring" element={<Hiring />} />
-                    <Route path="/hiring/:id" element={<HiringWorkspace />} />
-                    <Route path="/candidates" element={<Candidates />} />
-                    <Route path="/candidates/:id" element={<CandidateDetail />} />
-                    <Route path="/recruiters" element={<AIRecruiters />} />
-                    <Route path="/interviews" element={<Interviews />} />
-                    <Route path="/activity" element={<Activity />} />
-                    <Route path="/settings" element={<Settings />} />
-                    <Route path="/screening-reports" element={<ScreeningReports />} />
-                    <Route path="/screening-reports/:hiringId" element={<ScreeningReportHiring />} />
-                    <Route path="/screening-reports/:hiringId/candidate/:candidateId" element={<CandidateScreeningReport />} />
-                    <Route path="/solutions/sales/lead-management" element={<LeadManagementDashboard />} />
-                    <Route path="/sales/lead-management" element={<LeadManagementDashboard />} />
-                    <Route path="/sales/lead-management/lead-research" element={<LeadResearch />} />
-                    <Route path="/sales/lead-management/lead-enrichment" element={<LeadEnrichment />} />
-                    <Route path="/sales/lead-management/lead-qualification" element={<LeadQualification />} />
-                    <Route path="/sales/lead-management/lead-scoring" element={<LeadScoring />} />
-                    <Route path="/sales/lead-management/lead-assignment" element={<LeadAssignment />} />
-                    <Route path="/sales/lead-management/campaigns" element={<Campaigns />} />
-                    <Route path="/sales/lead-management/activity" element={<SalesActivity />} />
-                    <Route path="/coming-soon/lead-qualification" element={<LeadQualificationDashboard />} />
-                    <Route path="/coming-soon/lead-qualification/lead-research" element={<QualificationResearch />} />
-                    <Route path="/coming-soon/lead-qualification/qualification-criteria" element={<QualificationCriteria />} />
-                    <Route path="/coming-soon/lead-qualification/lead-scoring" element={<QualificationScoring />} />
-                    <Route path="/coming-soon/lead-qualification/intent-detection" element={<IntentDetection />} />
-                    <Route path="/coming-soon/lead-qualification/qualification-results" element={<QualificationResults />} />
-                    <Route path="/coming-soon/lead-qualification/activity" element={<QualificationActivity />} />
-                    <Route path="/coming-soon/sales-outreach" element={<SalesOutreachDashboard />} />
-                    <Route path="/coming-soon/sales-outreach/lead-research" element={<SalesOutreachLeadResearch />} />
-                    <Route path="/coming-soon/sales-outreach/personalized-outreach" element={<SalesOutreachPersonalized />} />
-                    <Route path="/coming-soon/sales-outreach/email-campaigns" element={<SalesOutreachCampaigns />} />
-                    <Route path="/coming-soon/sales-outreach/follow-ups" element={<SalesOutreachFollowUps />} />
-                    <Route path="/coming-soon/sales-outreach/meeting-booking" element={<SalesOutreachMeetingBooking />} />
-                    <Route path="/coming-soon/sales-outreach/activity" element={<SalesOutreachActivity />} />
-                    <Route path="/coming-soon/meeting-scheduling" element={<MeetingSchedulingDashboard />} />
-                    <Route path="/coming-soon/meeting-scheduling/meeting-requests" element={<MeetingRequests />} />
-                    <Route path="/coming-soon/meeting-scheduling/availability" element={<Availability />} />
-                    <Route path="/coming-soon/meeting-scheduling/scheduling" element={<Scheduling />} />
-                    <Route path="/coming-soon/meeting-scheduling/rescheduling" element={<Rescheduling />} />
-                    <Route path="/coming-soon/meeting-scheduling/reminders" element={<MeetingReminders />} />
-                    <Route path="/coming-soon/meeting-scheduling/activity" element={<MeetingSchedulingActivity />} />
-                    <Route path="/coming-soon/opportunity-management" element={<OpportunityManagementDashboard />} />
-                    <Route path="/coming-soon/opportunity-management/opportunity-tracking" element={<OpportunityTracking />} />
-                    <Route path="/coming-soon/opportunity-management/deal-qualification" element={<DealQualification />} />
-                    <Route path="/coming-soon/opportunity-management/pipeline-management" element={<PipelineManagement />} />
-                    <Route path="/coming-soon/opportunity-management/deal-updates" element={<DealUpdates />} />
-                    <Route path="/coming-soon/opportunity-management/follow-ups" element={<OpportunityFollowUps />} />
-                    <Route path="/coming-soon/opportunity-management/activity" element={<OpportunityActivity />} />
-                    <Route path="/coming-soon/sales-analytics/sales-dashboard" element={<SalesAnalyticsDashboard />} />
-                    <Route path="/coming-soon/sales-analytics/pipeline-analytics" element={<PipelineAnalytics />} />
-                    <Route path="/coming-soon/sales-analytics/conversion-analytics" element={<ConversionAnalytics />} />
-                    <Route path="/coming-soon/sales-analytics/revenue-insights" element={<RevenueInsights />} />
-                    <Route path="/coming-soon/sales-analytics/forecasting" element={<Forecasting />} />
-                    <Route path="/coming-soon/sales-analytics/activity" element={<ActivityAnalytics />} />
-                    <Route path="/solutions/:group/:solution" element={<SolutionDestination />} />
-                    <Route path="/coming-soon/:context/:item" element={<SolutionDestination />} />
-                  </Routes>
-                </Layout>
-              }
-            />
-          </Routes>
-        </ToastProvider>
-      </AppProvider>
+      <AuthProvider>
+        <AppProvider>
+          <ToastProvider>
+            <Routes>
+              {/* Public route */}
+              <Route path="/login" element={<AuthPage />} />
+
+              {/* All HR / product routes — require authentication */}
+              <Route
+                path="/*"
+                element={<RequireAuth>
+                  <Layout>
+                    <Routes>
+                      <Route path="/" element={<Home />} />
+                      <Route path="/solutions/hr/talent-acquisition" element={<Home />} />
+                      <Route path="/hiring/create" element={<CreateHiring />} />
+                      <Route path="/hiring/:id/screening" element={<ScreeningProgress />} />
+                      <Route path="/hiring" element={<Hiring />} />
+                      <Route path="/hiring/:id" element={<HiringWorkspace />} />
+                      <Route path="/candidates" element={<Candidates />} />
+                      <Route path="/candidates/:id" element={<CandidateDetail />} />
+                      <Route path="/recruiters" element={<AIRecruiters />} />
+                      <Route path="/interviews" element={<Interviews />} />
+                      <Route path="/activity" element={<Activity />} />
+                      <Route path="/settings" element={<Settings />} />
+                      <Route path="/screening-reports" element={<ScreeningReports />} />
+                      <Route path="/screening-reports/:hiringId" element={<ScreeningReportHiring />} />
+                      <Route path="/screening-reports/:hiringId/candidate/:candidateId" element={<CandidateScreeningReport />} />
+                      <Route path="/solutions/sales/lead-management" element={<LeadManagementDashboard />} />
+                      <Route path="/sales/lead-management" element={<LeadManagementDashboard />} />
+                      <Route path="/sales/lead-management/lead-research" element={<LeadResearch />} />
+                      <Route path="/sales/lead-management/lead-enrichment" element={<LeadEnrichment />} />
+                      <Route path="/sales/lead-management/lead-qualification" element={<LeadQualification />} />
+                      <Route path="/sales/lead-management/lead-scoring" element={<LeadScoring />} />
+                      <Route path="/sales/lead-management/lead-assignment" element={<LeadAssignment />} />
+                      <Route path="/sales/lead-management/campaigns" element={<Campaigns />} />
+                      <Route path="/sales/lead-management/activity" element={<SalesActivity />} />
+                      <Route path="/coming-soon/lead-qualification" element={<LeadQualificationDashboard />} />
+                      <Route path="/coming-soon/lead-qualification/lead-research" element={<QualificationResearch />} />
+                      <Route path="/coming-soon/lead-qualification/qualification-criteria" element={<QualificationCriteria />} />
+                      <Route path="/coming-soon/lead-qualification/lead-scoring" element={<QualificationScoring />} />
+                      <Route path="/coming-soon/lead-qualification/intent-detection" element={<IntentDetection />} />
+                      <Route path="/coming-soon/lead-qualification/qualification-results" element={<QualificationResults />} />
+                      <Route path="/coming-soon/lead-qualification/activity" element={<QualificationActivity />} />
+                      <Route path="/coming-soon/sales-outreach" element={<SalesOutreachDashboard />} />
+                      <Route path="/coming-soon/sales-outreach/lead-research" element={<SalesOutreachLeadResearch />} />
+                      <Route path="/coming-soon/sales-outreach/personalized-outreach" element={<SalesOutreachPersonalized />} />
+                      <Route path="/coming-soon/sales-outreach/email-campaigns" element={<SalesOutreachCampaigns />} />
+                      <Route path="/coming-soon/sales-outreach/follow-ups" element={<SalesOutreachFollowUps />} />
+                      <Route path="/coming-soon/sales-outreach/meeting-booking" element={<SalesOutreachMeetingBooking />} />
+                      <Route path="/coming-soon/sales-outreach/activity" element={<SalesOutreachActivity />} />
+                      <Route path="/coming-soon/meeting-scheduling" element={<MeetingSchedulingDashboard />} />
+                      <Route path="/coming-soon/meeting-scheduling/meeting-requests" element={<MeetingRequests />} />
+                      <Route path="/coming-soon/meeting-scheduling/availability" element={<Availability />} />
+                      <Route path="/coming-soon/meeting-scheduling/scheduling" element={<Scheduling />} />
+                      <Route path="/coming-soon/meeting-scheduling/rescheduling" element={<Rescheduling />} />
+                      <Route path="/coming-soon/meeting-scheduling/reminders" element={<MeetingReminders />} />
+                      <Route path="/coming-soon/meeting-scheduling/activity" element={<MeetingSchedulingActivity />} />
+                      <Route path="/coming-soon/opportunity-management" element={<OpportunityManagementDashboard />} />
+                      <Route path="/coming-soon/opportunity-management/opportunity-tracking" element={<OpportunityTracking />} />
+                      <Route path="/coming-soon/opportunity-management/deal-qualification" element={<DealQualification />} />
+                      <Route path="/coming-soon/opportunity-management/pipeline-management" element={<PipelineManagement />} />
+                      <Route path="/coming-soon/opportunity-management/deal-updates" element={<DealUpdates />} />
+                      <Route path="/coming-soon/opportunity-management/follow-ups" element={<OpportunityFollowUps />} />
+                      <Route path="/coming-soon/opportunity-management/activity" element={<OpportunityActivity />} />
+                      <Route path="/coming-soon/sales-analytics/sales-dashboard" element={<SalesAnalyticsDashboard />} />
+                      <Route path="/coming-soon/sales-analytics/pipeline-analytics" element={<PipelineAnalytics />} />
+                      <Route path="/coming-soon/sales-analytics/conversion-analytics" element={<ConversionAnalytics />} />
+                      <Route path="/coming-soon/sales-analytics/revenue-insights" element={<RevenueInsights />} />
+                      <Route path="/coming-soon/sales-analytics/forecasting" element={<Forecasting />} />
+                      <Route path="/coming-soon/sales-analytics/activity" element={<ActivityAnalytics />} />
+                      <Route path="/solutions/:group/:solution" element={<SolutionDestination />} />
+                      <Route path="/coming-soon/:context/:item" element={<SolutionDestination />} />
+                    </Routes>
+                  </Layout>
+                </RequireAuth>}
+              />
+            </Routes>
+          </ToastProvider>
+        </AppProvider>
+      </AuthProvider>
     </BrowserRouter>
   );
 };

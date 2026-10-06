@@ -29,11 +29,11 @@ export const HiringCard: React.FC<HiringCardProps> = ({ hiring, onClick }) => {
             <div className="hiring-card__meta">
               <span className="hiring-card__meta-item">
                 <MapPin size={13} />
-                {hiring.location}
+                {hiring.location || '—'}
               </span>
               <span className="hiring-card__meta-sep">·</span>
               <span className="hiring-card__meta-item">
-                {employmentLabels[hiring.employmentType]}
+                {hiring.backendCampaign ? '—' : employmentLabels[hiring.employmentType]}
               </span>
             </div>
           </div>
@@ -44,36 +44,55 @@ export const HiringCard: React.FC<HiringCardProps> = ({ hiring, onClick }) => {
 
         <div className="hiring-card__stats">
           <div className="hiring-card__stat">
-            <span className="hiring-card__stat-value">{hiring.candidateCount}</span>
+            <span className="hiring-card__stat-value">
+              {hiring.backendCampaign && !hiring.campaignCandidatesLoaded ? '—' : hiring.candidateCount}
+            </span>
             <span className="hiring-card__stat-label">Total</span>
           </div>
-          <div className="hiring-card__stat-divider" />
-          <div className="hiring-card__stat">
-            <span className="hiring-card__stat-value">{hiring.contacted}</span>
-            <span className="hiring-card__stat-label">Contacted</span>
-          </div>
-          <div className="hiring-card__stat-divider" />
-          <div className="hiring-card__stat">
-            <span className="hiring-card__stat-value">{hiring.connected}</span>
-            <span className="hiring-card__stat-label">Connected</span>
-          </div>
-          <div className="hiring-card__stat-divider" />
-          <div className="hiring-card__stat">
-            <span className="hiring-card__stat-value">{hiring.interested}</span>
-            <span className="hiring-card__stat-label">Interested</span>
-          </div>
-          <div className="hiring-card__stat-divider" />
-          <div className="hiring-card__stat">
-            <span className="hiring-card__stat-value hiring-card__stat-value--accent">{hiring.shortlisted}</span>
-            <span className="hiring-card__stat-label">Shortlisted</span>
-          </div>
+          {hiring.backendCampaign ? (
+            <>
+              <div className="hiring-card__stat-divider" />
+              <div className="hiring-card__stat">
+                <span className="hiring-card__stat-value">{hiring.resumeCount ?? 0}</span>
+                <span className="hiring-card__stat-label">Screened</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="hiring-card__stat-divider" />
+              <div className="hiring-card__stat">
+                <span className="hiring-card__stat-value">{hiring.contacted}</span>
+                <span className="hiring-card__stat-label">Contacted</span>
+              </div>
+              <div className="hiring-card__stat-divider" />
+              <div className="hiring-card__stat">
+                <span className="hiring-card__stat-value">{hiring.connected}</span>
+                <span className="hiring-card__stat-label">Connected</span>
+              </div>
+              <div className="hiring-card__stat-divider" />
+              <div className="hiring-card__stat">
+                <span className="hiring-card__stat-value">{hiring.interested}</span>
+                <span className="hiring-card__stat-label">Interested</span>
+              </div>
+              <div className="hiring-card__stat-divider" />
+              <div className="hiring-card__stat">
+                <span className="hiring-card__stat-value hiring-card__stat-value--accent">{hiring.shortlisted}</span>
+                <span className="hiring-card__stat-label">Shortlisted</span>
+              </div>
+            </>
+          )}
         </div>
 
         {hiring.status !== 'draft' && (
           <div className="hiring-card__progress">
-            <ProgressBar value={hiring.contacted} total={hiring.candidateCount} />
+            <ProgressBar
+              value={hiring.backendCampaign ? hiring.resumeCount ?? 0 : hiring.contacted}
+              total={hiring.candidateCount}
+            />
             <span className="hiring-card__progress-label">
-              {hiring.contacted} of {hiring.candidateCount} contacted
+              {hiring.backendCampaign
+                ? `${hiring.resumeCount ?? 0} of ${hiring.campaignCandidatesLoaded ? hiring.candidateCount : '—'} screened`
+                : `${hiring.contacted} of ${hiring.candidateCount} contacted`}
             </span>
           </div>
         )}
@@ -85,7 +104,7 @@ export const HiringCard: React.FC<HiringCardProps> = ({ hiring, onClick }) => {
         </span>
         {hiring.status === 'draft' && (
           <span className="hiring-card__footer-action">
-            <Users size={12} /> {hiring.candidateCount} candidates ready
+            <Users size={12} /> {hiring.campaignCandidatesLoaded === false ? 'Candidate count unavailable' : `${hiring.candidateCount} candidates ready`}
           </span>
         )}
       </div>

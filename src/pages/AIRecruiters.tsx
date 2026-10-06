@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Plus, Pencil, Trash2, Bot, Search, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Pencil, Trash2, Bot, Search, X, Loader2 } from 'lucide-react';
 import { PageHeader } from '../components/ui/Layout';
 import { Button } from '../components/ui/Button';
 import { Input, Textarea, Select } from '../components/ui/Input';
@@ -9,6 +9,11 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { useToast } from '../components/ui/Toast';
 import { useAppStore, useRecruiters } from '../store/appStore';
 import type { AIRecruiter } from '../types';
+import {
+  createAgent, listAgents, updateAgent, deleteAgent,
+  STYLE_TO_API, LANG_TO_API, LANG_ARRAY_FROM_API,
+} from '../services/agentService';
+import type { ConversationStyle, AgentLanguage, AgentVoice } from '../services/agentService';
 
 const AVATAR_COLORS = ['#2563eb', '#0891b2', '#7c3aed', '#059669', '#dc2626', '#d97706'];
 
@@ -70,11 +75,43 @@ const AIRecruiters: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<RecruiterForm>(defaultForm);
   const [errors, setErrors] = useState<Partial<RecruiterForm>>({});
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Search & filter state
   const [search, setSearch] = useState('');
   const [langFilter, setLangFilter] = useState('all');
   const [styleFilter, setStyleFilter] = useState('all');
+
+  // ——— Load agents from API on mount, sync into local store ———
+  useEffect(() => {
+    listAgents()
+      .then(agents => {
+        agents.forEach(a => {
+          const langs = LANG_ARRAY_FROM_API[a.languages] ?? ['English'];
+          const existing = recruiters.find(r => r.id === a.id);
+          const recruiterData: AIRecruiter = {
+            id: a.id,
+            name: a.name,
+            description: `${a.conversation_style} tone.`,
+            languages: langs,
+            voice: a.voice,
+            conversationStyle: a.conversation_style,
+            interviewInstructions: a.interview_instruction,
+            avatarInitial: a.name[0]?.toUpperCase() ?? 'A',
+            avatarColor: existing?.avatarColor ?? AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
+          };
+          if (existing) {
+            dispatch({ type: 'UPDATE_RECRUITER', payload: { id: a.id, updates: recruiterData } });
+          } else {
+            dispatch({ type: 'CREATE_RECRUITER', payload: recruiterData });
+          }
+        });
+      })
+      .catch(() => { /* backend offline — use local store seed data */ });
+  // Only run on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const openCreate = () => {
     setEditingRecruiter(null);
@@ -99,52 +136,88 @@ const AIRecruiters: React.FC = () => {
     setShowModal(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const e: Partial<RecruiterForm> = {};
     if (!form.name.trim()) e.name = 'Name is required';
     if (!form.interviewInstructions.trim()) e.interviewInstructions = 'Interview instructions are required';
     setErrors(e);
     if (Object.keys(e).length > 0) return;
 
-    if (editingRecruiter) {
-      dispatch({
-        type: 'UPDATE_RECRUITER',
-        payload: {
-          id: editingRecruiter.id,
-          updates: {
-            name: form.name.trim(),
-            conversationStyle: styleLabel[form.conversationStyle] || form.conversationStyle,
-            languages: langMap[form.languages] || ['English'],
-            voice: form.voice,
-            interviewInstructions: form.interviewInstructions.trim(),
-            description: `${styleLabel[form.conversationStyle]} tone.`,
-            avatarInitial: form.name[0].toUpperCase(),
+    setSaving(true);
+    try {
+      const apiStyle = STYLE_TO_API[form.conversationStyle] ?? 'Professional' as ConversationStyle;
+      const apiLang = LANG_TO_API[form.languages] ?? 'English' as AgentLanguage;
+      const apiVoice = form.voice as AgentVoice;
+
+      if (editingRecruiter) {
+        // ——— Update existing agent via API ———
+        const updated = await updateAgent(editingRecruiter.id, {
+          name: form.name.trim(),
+          conversation_style: apiStyle,
+          languages: apiLang,
+          voice: apiVoice,
+          interview_instruction: form.interviewInstructions.trim(),
+        });
+        dispatch({
+          type: 'UPDATE_RECRUITER',
+          payload: {
+            id: editingRecruiter.id,
+            updates: {
+              name: updated.name,
+              conversationStyle: updated.conversation_style,
+              languages: LANG_ARRAY_FROM_API[updated.languages] ?? ['English'],
+              voice: updated.voice,
+              interviewInstructions: updated.interview_instruction,
+              description: `${updated.conversation_style} tone.`,
+              avatarInitial: updated.name[0]?.toUpperCase() ?? 'A',
+            },
           },
-        },
-      });
-      showToast(`${form.name} updated`, 'success');
-    } else {
-      const newRecruiter: AIRecruiter = {
-        id: `ar_${Date.now()}`,
-        name: form.name.trim(),
-        description: `${styleLabel[form.conversationStyle]} tone.`,
-        languages: langMap[form.languages] || ['English'],
-        voice: form.voice,
-        conversationStyle: styleLabel[form.conversationStyle] || form.conversationStyle,
-        interviewInstructions: form.interviewInstructions.trim(),
-        avatarInitial: form.name[0].toUpperCase(),
-        avatarColor: AVATAR_COLORS[recruiters.length % AVATAR_COLORS.length],
-      };
-      dispatch({ type: 'CREATE_RECRUITER', payload: newRecruiter });
-      showToast(`AI Recruiter "${form.name}" created`, 'success');
+        });
+        showToast(`${updated.name} updated`, 'success');
+      } else {
+        // ——— Create new agent via API ———
+        const created = await createAgent({
+          name: form.name.trim(),
+          conversation_style: apiStyle,
+          languages: apiLang,
+          voice: apiVoice,
+          interview_instruction: form.interviewInstructions.trim(),
+        });
+        const newRecruiter: AIRecruiter = {
+          id: created.id,
+          name: created.name,
+          description: `${created.conversation_style} tone.`,
+          languages: LANG_ARRAY_FROM_API[created.languages] ?? ['English'],
+          voice: created.voice,
+          conversationStyle: created.conversation_style,
+          interviewInstructions: created.interview_instruction,
+          avatarInitial: created.name[0]?.toUpperCase() ?? 'A',
+          avatarColor: AVATAR_COLORS[recruiters.length % AVATAR_COLORS.length],
+        };
+        dispatch({ type: 'CREATE_RECRUITER', payload: newRecruiter });
+        showToast(`AI Recruiter "${created.name}" created`, 'success');
+      }
+      setShowModal(false);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to save recruiter';
+      showToast(msg, 'error');
+    } finally {
+      setSaving(false);
     }
-    setShowModal(false);
   };
 
-  const handleDelete = (r: AIRecruiter) => {
-    if (confirm(`Delete AI Recruiter "${r.name}"? This cannot be undone.`)) {
+  const handleDelete = async (r: AIRecruiter) => {
+    if (!confirm(`Delete AI Recruiter "${r.name}"? This cannot be undone.`)) return;
+    setDeletingId(r.id);
+    try {
+      await deleteAgent(r.id);
       dispatch({ type: 'DELETE_RECRUITER', payload: r.id });
       showToast(`${r.name} deleted`, 'info');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete recruiter';
+      showToast(msg, 'error');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -334,7 +407,13 @@ const AIRecruiters: React.FC = () => {
                       <Button variant="ghost" size="sm" icon={<Pencil size={14} />} onClick={() => openEdit(recruiter)}>
                         Edit
                       </Button>
-                      <Button variant="ghost" size="sm" icon={<Trash2 size={14} />} onClick={() => handleDelete(recruiter)} />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={deletingId === recruiter.id ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
+                        onClick={() => handleDelete(recruiter)}
+                        disabled={!!deletingId}
+                      />
                     </div>
                   </div>
 
@@ -374,7 +453,9 @@ const AIRecruiters: React.FC = () => {
         footer={
           <>
             <Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
-            <Button onClick={handleSave}>{editingRecruiter ? 'Save changes' : 'Create'}</Button>
+            <Button onClick={handleSave} loading={saving}>
+              {editingRecruiter ? 'Save changes' : 'Create'}
+            </Button>
           </>
         }
       >

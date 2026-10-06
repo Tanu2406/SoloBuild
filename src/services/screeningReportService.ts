@@ -22,7 +22,8 @@ import type {
 
 // ─── Helpers ────────────────────────────────────────────────
 
-function labelForScore(score: number): string {
+function labelForScore(score: number | undefined): string {
+  if (score === undefined) return 'Not Scored';
   if (score >= 80) return 'Strong Match';
   if (score >= 60) return 'Moderate Match';
   return 'Not a Match';
@@ -542,16 +543,31 @@ export const screeningReportService = {
   getReport(candidate: Candidate): CandidateScreeningReportData {
     const override = assessmentOverrides[candidate.id] ?? buildFallbackAssessment(candidate);
     const callComplete = !!candidate.callAssessmentComplete;
+    const isBackendDocumentScreening = candidate.documentScreeningId !== undefined;
+    const resumeEvidence = isBackendDocumentScreening
+      ? [
+          ...(candidate.strongMatches ?? []).map(label => ({
+            source: 'resume' as const,
+            label,
+            detail: 'Matched field returned by document screening.',
+          })),
+          ...(candidate.missingRequirements ?? []).map(label => ({
+            source: 'resume' as const,
+            label,
+            detail: 'Unmatched field returned by document screening.',
+          })),
+        ]
+      : override.resumeEvidence;
 
     // ── Resume Screening section ──────────────────────────
     const resumeScreening: ResumeScreeningReport = {
-      matchScore: candidate.matchScore ?? 0,
-      compatibility: candidate.compatibility ?? 'not_compatible',
-      resumeLabel: labelForScore(candidate.matchScore ?? 0),
+      matchScore: candidate.matchScore ?? null,
+      compatibility: candidate.compatibility ?? null,
+      resumeLabel: labelForScore(candidate.matchScore),
       strongMatches: candidate.strongMatches ?? [],
       missingRequirements: candidate.missingRequirements ?? [],
-      resumeSummary: override.resumeSummary,
-      evidence: override.resumeEvidence,
+      resumeSummary: candidate.documentScreeningSummary ?? override.resumeSummary,
+      evidence: resumeEvidence,
     };
 
     // ── Call Assessment section ──────────────────────────
