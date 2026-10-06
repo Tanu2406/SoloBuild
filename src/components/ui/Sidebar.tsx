@@ -385,7 +385,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ['interested', 'connected', 'shortlisted'].includes(candidate.status) &&
     !['interview_scheduled', 'interview_completed', 'hired'].includes(candidate.status)
   ).length;
-  const chats = [...recentChats, ...demoRecentChats];
+  const recentChatIds = new Set(recentChats.map((chat) => chat.id));
+  const chats = [...recentChats, ...demoRecentChats.filter((chat) => !recentChatIds.has(chat.id))];
   const visibleChats = recentExpanded ? chats : chats.slice(0, 3);
   const routeContextId = pathname.startsWith('/hiring') ||
     ['/candidates', '/screening-reports', '/recruiters', '/interviews', '/activity'].some((path) => pathname.startsWith(path))
@@ -491,15 +492,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   key={chat.id}
                   type="button"
-                  className={`sidebar__recent-chat${!chat.isDemo && selectedChatId === chat.id ? ' sidebar__recent-chat--active' : ''}${chat.isDemo ? ' sidebar__recent-chat--demo' : ''}`}
-                  title={chat.isDemo ? 'Sample recent chat' : chat.title}
+                  className={`sidebar__recent-chat${selectedChatId === chat.id ? ' sidebar__recent-chat--active' : ''}${chat.isDemo ? ' sidebar__recent-chat--demo' : ''}`}
+                  title={chat.title}
                   onClick={() => {
-                    if (!chat.isDemo) {
-                      onSelectChat(chat.id);
-                      setMobileOpen(false);
-                    }
+                    onSelectChat(chat.id);
+                    setMobileOpen(false);
                   }}
-                  aria-disabled={chat.isDemo || undefined}
                 >
                   <span className="sidebar__recent-title">{chat.title}</span>
                   <span className="sidebar__recent-meta">

@@ -10,28 +10,33 @@ export function ChatWindow({
   messages: ChatMessageData[];
   onSubmit: (message: string) => void;
 }) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const messagesElement = messagesRef.current;
+    messagesElement?.scrollTo({ top: messagesElement.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
   return (
     <main className="chatbot-window" aria-label="Chat center">
-      <div className="chatbot-window__messages">
+      <div className="chatbot-window__messages" ref={messagesRef} aria-live="polite">
         <div className="chatbot-window__message-list">
           {messages.length === 0 && (
-            <p className="chatbot-window__empty">Send a message to start a conversation.</p>
+            <div className="chatbot-window__welcome">
+              <div className="chatbot-window__welcome-avatar" aria-hidden="true">SB</div>
+              <p className="chatbot-window__welcome-brand">Rollo AI</p>
+              <h1>How can I help?</h1>
+              <p>Tell me what you need help with, from HR tasks and hiring workflows to interviews and team updates.</p>
+            </div>
           )}
           {messages.map(message => <ChatMessage key={message.id} message={message} />)}
-          <div ref={bottomRef} />
         </div>
       </div>
       <div className="chatbot-window__footer">
         <div className="chatbot-window__composer-wrap">
           <ChatComposer onSubmit={onSubmit} />
           <p className="chatbot-window__notice">
-            Your messages are kept in this session. Connect an assistant service to receive AI responses.
+            Demo responses are generated for this session. No connected tools are accessed.
           </p>
         </div>
       </div>

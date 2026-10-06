@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ChatWindow } from './chatbot/ChatWindow';
 import { ChatHeader } from './chatbot/ChatHeader';
 import { ContextPanel } from './chatbot/ContextPanel';
-import { talentAcquisitionSolution } from './chatbot/data';
+import { createDemoResponse, demoRecentConversations, talentAcquisitionSolution } from './chatbot/data';
 import type { ChatMessageData } from './chatbot/types';
 import './chatbot/chatbot.css';
 
@@ -38,6 +38,10 @@ export const ChatMode: React.FC<ChatModeProps> = ({
     () => conversations.find((conversation) => conversation.id === selectedChatId) ?? null,
     [conversations, selectedChatId],
   );
+  const selectedDemoConversation = useMemo(
+    () => demoRecentConversations.find((conversation) => conversation.id === selectedChatId) ?? null,
+    [selectedChatId],
+  );
 
   const recentChats = useMemo(
     () => [...conversations].sort((a, b) => b.updatedAt - a.updatedAt),
@@ -49,18 +53,38 @@ export const ChatMode: React.FC<ChatModeProps> = ({
   }, [onRecentChatsChange, recentChats]);
 
   function submitMessage(content: string) {
-    const message: ChatMessageData = {
+    const userMessage: ChatMessageData = {
       id: crypto.randomUUID(),
       role: 'user',
       content,
     };
+    const assistantMessage: ChatMessageData = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: createDemoResponse(content),
+    };
     const now = Date.now();
     if (selectedChatId) {
-      setConversations((current) => current.map((conversation) => (
-        conversation.id === selectedChatId
-          ? { ...conversation, messages: [...conversation.messages, message], updatedAt: now }
-          : conversation
-      )));
+      setConversations((current) => {
+        const existingConversation = current.find((conversation) => conversation.id === selectedChatId);
+        if (existingConversation) {
+          return current.map((conversation) => (
+            conversation.id === selectedChatId
+              ? { ...conversation, messages: [...conversation.messages, userMessage, assistantMessage], updatedAt: now }
+              : conversation
+          ));
+        }
+        const baseConversation = selectedDemoConversation;
+        return [
+          {
+            id: selectedChatId,
+            title: baseConversation?.title ?? content.slice(0, 40),
+            messages: [...(baseConversation?.messages ?? []), userMessage, assistantMessage],
+            updatedAt: now,
+          },
+          ...current,
+        ];
+      });
       return;
     }
 
@@ -69,7 +93,7 @@ export const ChatMode: React.FC<ChatModeProps> = ({
       {
         id,
         title: content.length > 40 ? `${content.slice(0, 37)}...` : content,
-        messages: [message],
+        messages: [userMessage, assistantMessage],
         updatedAt: now,
       },
       ...current,
@@ -89,7 +113,7 @@ export const ChatMode: React.FC<ChatModeProps> = ({
           <div className="marketing-chatbot__panels">
             <ChatWindow
               key={`${selectedChatId ?? 'new'}-${newChatRequest}`}
-              messages={selectedConversation?.messages ?? []}
+              messages={selectedConversation?.messages ?? selectedDemoConversation?.messages ?? []}
               onSubmit={submitMessage}
             />
             <ContextPanel solution={talentAcquisitionSolution} />

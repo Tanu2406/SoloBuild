@@ -19,8 +19,8 @@ export function ChatHeader({
         </div>
       </div>
       <div className="chatbot-header__actions">
-        <span className="chatbot-header__status" title="No assistant response service is configured">
-          Service not connected
+        <span className="chatbot-header__status" title="Online">
+          Online
         </span>
         <button type="button" className="chatbot-header__exit" aria-label="Back to app" onClick={onExit}>
           <ArrowLeft size={14} />

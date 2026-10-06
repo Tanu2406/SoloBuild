@@ -196,6 +196,7 @@
 .chatbot-composer button[type='submit'] svg { width: 16px; height: 16px; }
 .chatbot-composer button.chatbot-composer__optional { display: flex; }
 .chatbot-send-icon { width: 16px; height: 16px; }
+.chatbot-send-icon--reversed { transform: rotate(180deg); }
 
 .chatbot-message--user { display: flex; justify-content: flex-end; }
 
@@ -387,7 +388,7 @@
 
 .chatbot-header__actions { display: flex; flex: 0 0 auto; align-items: center; gap: 14px; }
 .chatbot-header__status { color: #64748b; white-space: nowrap; }
-.chatbot-header__status::before { background: #94a3b8; }
+.chatbot-header__status::before { background: #0066ff; }
 
 .chatbot-header__exit {
   display: inline-flex;
@@ -404,7 +405,33 @@
 
 .chatbot-header__exit:hover { background: #f1f5f9; color: #0f172a; }
 .chatbot-window__messages { overflow-x: hidden; scrollbar-color: #b5b5b5 transparent; scrollbar-width: thin; }
-.chatbot-window__empty { display: grid; min-height: 180px; place-items: center; color: #94a3b8; font-size: 13px; text-align: center; }
+.chatbot-window__messages { display: flex; flex-direction: column; }
+.chatbot-window__message-list { display: flex; flex: 1; flex-direction: column; }
+.chatbot-window__welcome {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  color: #64748b;
+  text-align: center;
+}
+.chatbot-window__welcome-avatar {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 50%;
+  background: #dbeafe;
+  color: #0066ff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.chatbot-window__welcome-brand { color: #0066ff; font-size: 12px; font-weight: 700; }
+.chatbot-window__welcome h1 { color: #0f172a; font-size: 22px; font-weight: 600; }
+.chatbot-window__welcome > p:last-child { max-width: 420px; font-size: 13px; line-height: 1.6; }
 .chatbot-window__notice { line-height: 1.5; }
 .chatbot-context-panel { width: 250px; min-width: 250px; overflow: hidden; }
 .chatbot-context-panel__content { min-width: 0; overflow-x: hidden; scrollbar-color: #b5b5b5 transparent; scrollbar-width: thin; }
@@ -603,7 +630,7 @@
   color: #0f172a;
 }
 
-.sidebar__recent-chat--demo { cursor: default; }
+.sidebar__recent-chat--demo { cursor: pointer; }
 
 .sidebar__recent-title {
   display: block;
