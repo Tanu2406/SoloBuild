@@ -1,0 +1,491 @@
+.sales-outreach-page { min-width: 0; }
+.sales-outreach-page > .page-header { margin-bottom: 18px; }
+.sales-outreach-page .page-header__actions { gap: 8px; }
+
+.sales-outreach-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
+  margin-bottom: 17px;
+}
+
+.sales-outreach-dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(340px, 0.88fr);
+  gap: 15px;
+  margin-bottom: 16px;
+}
+
+.sales-outreach-panel,
+.sales-outreach-followup-sidebar,
+.sales-outreach-team-availability {
+  min-width: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-white);
+  box-shadow: var(--shadow-sm);
+}
+
+.sales-outreach-panel { padding: 18px; }
+.sales-outreach-panel__heading,
+.sales-outreach-section-heading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.sales-outreach-panel__heading h2,
+.sales-outreach-section-heading h2,
+.sales-outreach-team-availability h2 {
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.sales-outreach-panel__heading p,
+.sales-outreach-section-heading p,
+.sales-outreach-team-availability > p {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.sales-outreach-panel__icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--brand-primary-light);
+  color: var(--brand-primary);
+}
+
+.sales-outreach-funnel { display: grid; gap: 12px; }
+.sales-outreach-funnel__row {
+  display: grid;
+  grid-template-columns: 104px minmax(60px, 1fr) 58px 40px;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+.sales-outreach-funnel__row > strong { color: var(--text-primary); font-variant-numeric: tabular-nums; text-align: right; }
+.sales-outreach-funnel__row > small { color: var(--text-tertiary); text-align: right; }
+.sales-outreach-funnel__track,
+.sales-outreach-campaign-progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+}
+.sales-outreach-funnel__track > span,
+.sales-outreach-campaign-progress > span {
+  display: block;
+  height: 100%;
+  min-width: 3px;
+  border-radius: inherit;
+  transition: width 180ms ease;
+}
+.sales-outreach-funnel__track .is-blue { background: #2563eb; }
+.sales-outreach-funnel__track .is-indigo { background: #4f46e5; }
+.sales-outreach-funnel__track .is-violet { background: #7c3aed; }
+.sales-outreach-funnel__track .is-cyan { background: #0891b2; }
+.sales-outreach-funnel__track .is-green { background: #059669; }
+.sales-outreach-funnel__track .is-amber { background: #d97706; }
+.sales-outreach-performance__foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 17px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 12px;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+}
+.sales-outreach-performance__foot > span:first-child { display: inline-flex; align-items: center; gap: 4px; color: var(--status-success-text); font-weight: 600; }
+
+.sales-outreach-pipeline__stages { display: grid; }
+.sales-outreach-pipeline__stage {
+  position: relative;
+  display: flex;
+  min-height: 41px;
+  align-items: center;
+  gap: 10px;
+}
+.sales-outreach-pipeline__stage-marker {
+  z-index: 1;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #bfdbfe;
+  border-radius: 50%;
+  background: #eff6ff;
+  color: var(--brand-primary);
+  font-size: 10px;
+  font-weight: 700;
+}
+.sales-outreach-pipeline__stage:not(:last-child)::before {
+  position: absolute;
+  top: 32px;
+  left: 11px;
+  width: 1px;
+  height: 19px;
+  background: #bfdbfe;
+  content: '';
+}
+.sales-outreach-pipeline__stage-copy { display: flex; min-width: 0; flex: 1; align-items: baseline; justify-content: space-between; gap: 10px; }
+.sales-outreach-pipeline__stage-copy strong { color: var(--text-primary); font-size: var(--font-size-sm); font-weight: 600; }
+.sales-outreach-pipeline__stage-copy small { color: var(--text-tertiary); font-size: var(--font-size-xs); text-align: right; }
+.sales-outreach-pipeline__arrow { display: none; }
+
+.sales-outreach-quick-actions { margin-bottom: 17px; }
+.sales-outreach-section-heading { align-items: center; margin-bottom: 12px; }
+.sales-outreach-quick-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.sales-outreach-quick-action {
+  display: flex;
+  min-width: 0;
+  min-height: 75px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-white);
+  padding: 12px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
+}
+.sales-outreach-quick-action:hover { transform: translateY(-1px); border-color: #bfdbfe; background: #f8fbff; }
+.sales-outreach-quick-action__icon,
+.sales-outreach-campaign-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--brand-primary-light);
+  color: var(--brand-primary);
+}
+.sales-outreach-quick-action__text { display: grid; min-width: 0; flex: 1; gap: 4px; }
+.sales-outreach-quick-action__text strong { overflow: hidden; color: var(--text-primary); font-size: var(--font-size-sm); text-overflow: ellipsis; white-space: nowrap; }
+.sales-outreach-quick-action__text small { overflow: hidden; color: var(--text-tertiary); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.sales-outreach-quick-action > svg { flex: 0 0 auto; color: var(--text-tertiary); }
+
+.sales-outreach-today,
+.sales-outreach-upcoming,
+.sales-outreach-scheduled-meetings { margin-bottom: 16px; }
+.sales-outreach-text-link,
+.sales-outreach-inline-link {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  color: var(--brand-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+.sales-outreach-inline-link { font-size: var(--font-size-xs); }
+.sales-outreach-text-link:hover,
+.sales-outreach-inline-link:hover { text-decoration: underline; }
+
+.sales-outreach-table-wrap { width: 100%; overflow-x: auto; scrollbar-width: thin; }
+.sales-outreach-table { width: 100%; min-width: 850px; border-collapse: collapse; text-align: left; }
+.sales-outreach-table th {
+  border-bottom: 1px solid var(--border-default);
+  padding: 10px 9px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.sales-outreach-table td {
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 11px 9px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  vertical-align: middle;
+}
+.sales-outreach-table tbody tr:last-child td { border-bottom: 0; }
+.sales-outreach-table td > strong,
+.sales-outreach-table td > small { display: block; }
+.sales-outreach-table td > strong { color: var(--text-primary); font-size: var(--font-size-sm); font-weight: 600; }
+.sales-outreach-table td > small { margin-top: 3px; color: var(--text-tertiary); font-size: 10px; }
+.sales-outreach-table .badge { white-space: nowrap; }
+.sales-outreach-row-actions { display: flex; align-items: center; gap: 5px; }
+.sales-outreach-row-actions .btn { height: 29px; padding-right: 8px; padding-left: 8px; }
+.sales-outreach-meeting-list { display: grid; }
+.sales-outreach-meeting {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 12px 0;
+}
+.sales-outreach-meeting:last-child { border-bottom: 0; }
+.sales-outreach-meeting__date {
+  display: grid;
+  width: 125px;
+  flex: 0 0 auto;
+  grid-template-columns: 18px 1fr;
+  align-items: center;
+  column-gap: 6px;
+  color: var(--brand-primary);
+}
+.sales-outreach-meeting__date svg { grid-row: span 2; }
+.sales-outreach-meeting__date small { color: var(--text-secondary); font-size: var(--font-size-xs); }
+.sales-outreach-meeting__date strong { color: var(--text-primary); font-size: var(--font-size-xs); }
+.sales-outreach-meeting__person { display: grid; min-width: 0; flex: 1; gap: 3px; }
+.sales-outreach-meeting__person strong { overflow: hidden; color: var(--text-primary); font-size: var(--font-size-sm); text-overflow: ellipsis; white-space: nowrap; }
+.sales-outreach-meeting__person small { overflow: hidden; color: var(--text-tertiary); font-size: var(--font-size-xs); text-overflow: ellipsis; white-space: nowrap; }
+.sales-outreach-empty { padding: 26px 12px; color: var(--text-tertiary); font-size: var(--font-size-sm); text-align: center; }
+
+.sales-outreach-research-toolbar { display: grid; grid-template-columns: minmax(240px, 1fr) 220px auto; align-items: end; gap: 12px; margin-bottom: 14px; }
+.sales-outreach-result-count { padding: 10px 0; color: var(--text-secondary); font-size: var(--font-size-sm); white-space: nowrap; }
+.sales-outreach-research-panel .sales-outreach-panel__heading { align-items: center; }
+.sales-outreach-table--research { min-width: 1130px; }
+.sales-outreach-table--research td { max-width: 200px; }
+.sales-outreach-table--research .sales-outreach-notes { min-width: 180px; white-space: normal; line-height: 1.45; }
+.sales-outreach-score {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 50%;
+  background: #eff6ff;
+  color: var(--brand-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+}
+.sales-outreach-prospect-drawer { display: grid; gap: 18px; }
+.sales-outreach-prospect-identity { display: flex; align-items: center; gap: 12px; }
+.sales-outreach-prospect-identity > div { min-width: 0; flex: 1; }
+.sales-outreach-prospect-identity h3 { color: var(--text-primary); font-size: var(--font-size-lg); }
+.sales-outreach-prospect-identity p { margin-top: 4px; color: var(--text-secondary); font-size: var(--font-size-sm); }
+.sales-outreach-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.sales-outreach-detail-grid > span { display: grid; min-width: 0; gap: 5px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.sales-outreach-detail-grid strong { overflow-wrap: anywhere; color: var(--text-primary); font-size: var(--font-size-sm); font-weight: 550; }
+.sales-outreach-research-note { border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-subtle); padding: 13px; }
+.sales-outreach-research-note > strong { color: var(--text-primary); font-size: var(--font-size-sm); }
+.sales-outreach-research-note p { margin-top: 7px; color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.55; }
+.sales-outreach-modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+
+.sales-outreach-composer-layout { display: grid; grid-template-columns: minmax(280px, 0.75fr) minmax(0, 1.25fr); align-items: start; gap: 16px; }
+.sales-outreach-composer-settings { display: grid; gap: 16px; }
+.sales-outreach-composer-settings > .sales-outreach-panel__heading { margin-bottom: 0; }
+.sales-outreach-context-card { display: grid; gap: 5px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-subtle); padding: 12px; }
+.sales-outreach-context-card > strong { color: var(--text-primary); font-size: var(--font-size-sm); }
+.sales-outreach-context-card > span:not(.badge) { color: var(--text-secondary); font-size: var(--font-size-xs); }
+.sales-outreach-form-label { display: grid; gap: 6px; color: var(--text-primary); font-size: var(--font-size-sm); font-weight: 500; }
+.sales-outreach-form-label .input-field { font-weight: 400; }
+.sales-outreach-form-label textarea { min-height: 76px; }
+.sales-outreach-personalization { display: grid; gap: 7px; color: var(--status-success-text); font-size: var(--font-size-xs); }
+.sales-outreach-personalization span { display: inline-flex; align-items: center; gap: 7px; }
+.sales-outreach-message-preview { display: grid; gap: 15px; }
+.sales-outreach-message-preview > .sales-outreach-panel__heading { margin-bottom: 0; }
+.sales-outreach-email-meta { display: grid; gap: 9px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 13px; }
+.sales-outreach-email-meta span { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 10px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.sales-outreach-email-meta strong { overflow-wrap: anywhere; color: var(--text-primary); font-weight: 500; }
+.sales-outreach-message-preview .textarea-field { min-height: 280px; line-height: 1.65; }
+.sales-outreach-empty-preview { display: grid; min-height: 280px; align-content: center; justify-items: center; gap: 10px; border: 1px dashed var(--border-default); border-radius: var(--radius-md); background: var(--bg-subtle); padding: 24px; color: var(--text-tertiary); text-align: center; }
+.sales-outreach-empty-preview svg { color: var(--brand-primary); }
+.sales-outreach-empty-preview strong { color: var(--text-primary); font-size: var(--font-size-sm); }
+.sales-outreach-empty-preview span { max-width: 340px; font-size: var(--font-size-xs); line-height: 1.5; }
+.sales-outreach-message-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.sales-outreach-demo-note { color: var(--text-tertiary); font-size: 10px; text-align: right; }
+
+.sales-outreach-campaign-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.sales-outreach-campaign-summary > div { display: grid; gap: 7px; border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-white); padding: 15px; }
+.sales-outreach-campaign-summary span { color: var(--text-secondary); font-size: var(--font-size-xs); }
+.sales-outreach-campaign-summary strong { color: var(--text-primary); font-size: 23px; font-weight: 700; letter-spacing: -0.4px; }
+.sales-outreach-campaign-summary small { display: flex; align-items: center; gap: 3px; color: var(--status-success-text); font-size: 10px; }
+.sales-outreach-campaign-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.sales-outreach-campaign-card { min-width: 0; border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-white); padding: 17px; box-shadow: var(--shadow-sm); }
+.sales-outreach-campaign-card__top { display: flex; align-items: center; gap: 9px; }
+.sales-outreach-campaign-card__top .badge { margin-left: auto; }
+.sales-outreach-icon-button { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-tertiary); cursor: pointer; }
+.sales-outreach-icon-button:hover { background: var(--bg-subtle); color: var(--text-primary); }
+.sales-outreach-campaign-card h2 { margin-top: 13px; color: var(--text-primary); font-size: var(--font-size-md); }
+.sales-outreach-campaign-audience { display: flex; min-height: 32px; align-items: center; gap: 7px; margin-top: 5px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.sales-outreach-campaign-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px 8px; margin: 17px 0 14px; }
+.sales-outreach-campaign-metrics span { display: grid; gap: 4px; color: var(--text-tertiary); font-size: 10px; }
+.sales-outreach-campaign-metrics strong { color: var(--text-primary); font-size: var(--font-size-sm); font-weight: 650; }
+.sales-outreach-campaign-progress { height: 6px; }
+.sales-outreach-campaign-progress > span { background: linear-gradient(90deg, #2563eb, #60a5fa); }
+.sales-outreach-campaign-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 13px; }
+.sales-outreach-campaign-detail { display: grid; gap: 20px; }
+.sales-outreach-campaign-detail__hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.sales-outreach-campaign-detail__hero h3 { margin-top: 9px; color: var(--text-primary); font-size: var(--font-size-lg); }
+.sales-outreach-campaign-detail__hero p { margin-top: 5px; color: var(--text-secondary); font-size: var(--font-size-sm); }
+.sales-outreach-campaign-detail__hero > strong { display: grid; color: var(--text-primary); font-size: 24px; text-align: right; }
+.sales-outreach-campaign-detail__hero > strong small { color: var(--text-tertiary); font-size: var(--font-size-xs); font-weight: 400; }
+.sales-outreach-campaign-detail__metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.sales-outreach-campaign-detail__metrics span { display: grid; gap: 6px; border-radius: var(--radius-md); background: var(--bg-subtle); padding: 10px; color: var(--text-tertiary); font-size: 10px; }
+.sales-outreach-campaign-detail__metrics strong { color: var(--text-primary); font-size: var(--font-size-md); }
+.sales-outreach-campaign-form { display: grid; gap: 18px; }
+.sales-outreach-campaign-form__intro { display: flex; align-items: center; gap: 11px; color: var(--text-secondary); font-size: var(--font-size-sm); }
+.sales-outreach-campaign-form__intro p { margin: 0; }
+.sales-outreach-campaign-form__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
+.sales-outreach-campaign-form__field { display: grid; min-width: 0; gap: 7px; color: var(--text-primary); font-size: var(--font-size-sm); font-weight: 550; }
+.sales-outreach-campaign-form__field > span b,
+.sales-outreach-campaign-form__audience legend b { color: var(--status-error-text); }
+.sales-outreach-campaign-form__field .input-field { width: 100%; min-width: 0; font-weight: 400; }
+.sales-outreach-campaign-form__field > small { color: var(--text-tertiary); font-size: var(--font-size-xs); font-weight: 400; line-height: 1.45; }
+.sales-outreach-campaign-form__field--wide { grid-column: 1 / -1; }
+.sales-outreach-campaign-form__audience { min-width: 0; margin: 0; padding: 0; border: 0; }
+.sales-outreach-campaign-form__audience legend { margin-bottom: 8px; color: var(--text-primary); font-size: var(--font-size-sm); font-weight: 550; }
+.sales-outreach-campaign-form__prospects { display: grid; max-height: 170px; overflow-y: auto; border: 1px solid var(--border-default); border-radius: var(--radius-md); }
+.sales-outreach-campaign-form__prospect { display: flex; min-width: 0; align-items: center; gap: 10px; border-bottom: 1px solid var(--border-subtle); padding: 9px 11px; cursor: pointer; }
+.sales-outreach-campaign-form__prospect:last-child { border-bottom: 0; }
+.sales-outreach-campaign-form__prospect:hover { background: var(--bg-subtle); }
+.sales-outreach-campaign-form__prospect > input,
+.sales-outreach-campaign-form__followup > input { width: 16px; height: 16px; flex: 0 0 auto; accent-color: var(--brand-primary); }
+.sales-outreach-campaign-form__prospect > span:nth-child(2) { display: grid; min-width: 0; gap: 3px; }
+.sales-outreach-campaign-form__prospect strong { overflow: hidden; color: var(--text-primary); font-size: var(--font-size-xs); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.sales-outreach-campaign-form__prospect small { overflow: hidden; color: var(--text-tertiary); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.sales-outreach-campaign-form__prospect .sales-outreach-score { margin-left: auto; }
+.sales-outreach-campaign-form__followup { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-subtle); padding: 12px; cursor: pointer; }
+.sales-outreach-campaign-form__followup > span { display: grid; gap: 4px; }
+.sales-outreach-campaign-form__followup strong { color: var(--text-primary); font-size: var(--font-size-xs); font-weight: 600; }
+.sales-outreach-campaign-form__followup small { color: var(--text-secondary); font-size: 10px; line-height: 1.45; }
+.sales-outreach-campaign-form__error { margin: 0; color: var(--status-error-text); font-size: var(--font-size-xs); }
+.sales-outreach-campaign-form__actions { display: flex; justify-content: flex-end; gap: 9px; border-top: 1px solid var(--border-subtle); padding-top: 15px; }
+
+.sales-outreach-followup-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); align-items: start; gap: 15px; }
+.sales-outreach-followup-sidebar { padding: 16px; }
+.sales-outreach-followup-sidebar > .sales-outreach-panel__heading { align-items: center; }
+.sales-outreach-followup-sidebar > .sales-outreach-panel__heading > svg { color: var(--brand-primary); }
+.sales-outreach-followup-tab { display: flex; width: 100%; align-items: center; justify-content: space-between; margin-bottom: 4px; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; padding: 10px; color: var(--text-secondary); font: inherit; font-size: var(--font-size-sm); text-align: left; cursor: pointer; }
+.sales-outreach-followup-tab:hover { background: var(--bg-subtle); }
+.sales-outreach-followup-tab.is-active { border-color: #bfdbfe; background: #eff6ff; color: var(--brand-primary); font-weight: 600; }
+.sales-outreach-followup-tab strong { display: grid; min-width: 23px; height: 23px; place-items: center; border-radius: 999px; background: var(--bg-subtle); color: inherit; font-size: 10px; }
+.sales-outreach-followup-tip { margin-top: 18px; border: 1px solid #bfdbfe; border-radius: var(--radius-md); background: #eff6ff; padding: 12px; color: var(--brand-primary); }
+.sales-outreach-followup-tip > strong { margin-left: 6px; font-size: var(--font-size-xs); }
+.sales-outreach-followup-tip p { margin-top: 7px; color: var(--text-secondary); font-size: 10px; line-height: 1.5; }
+.sales-outreach-followup-list > .sales-outreach-panel__heading { align-items: center; }
+.sales-outreach-followup-card { display: flex; gap: 12px; border-bottom: 1px solid var(--border-subtle); padding: 15px 0; }
+.sales-outreach-followup-card:last-child { border-bottom: 0; }
+.sales-outreach-followup-card__marker { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: #eff6ff; color: var(--brand-primary); }
+.sales-outreach-followup-card.priority-high .sales-outreach-followup-card__marker { background: var(--status-error-bg); color: var(--status-error-text); }
+.sales-outreach-followup-card__content { min-width: 0; flex: 1; }
+.sales-outreach-followup-card__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.sales-outreach-followup-card__top h3 { color: var(--text-primary); font-size: var(--font-size-sm); }
+.sales-outreach-followup-card__top p { margin-top: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.sales-outreach-followup-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 13px 0; }
+.sales-outreach-followup-meta > span { display: grid; min-width: 0; gap: 4px; }
+.sales-outreach-followup-meta small { color: var(--text-tertiary); font-size: 10px; }
+.sales-outreach-followup-meta strong { overflow-wrap: anywhere; color: var(--text-secondary); font-size: var(--font-size-xs); font-weight: 500; }
+
+.sales-outreach-calendar-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(270px, 0.7fr); align-items: start; gap: 15px; margin-bottom: 16px; }
+.sales-outreach-calendar__arrows { display: flex; gap: 4px; }
+.sales-outreach-calendar__arrows .btn { font-size: 20px; }
+.sales-outreach-calendar__week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.sales-outreach-calendar__week button { display: grid; min-width: 0; min-height: 82px; align-content: center; justify-items: center; gap: 5px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-white); color: var(--text-secondary); cursor: pointer; }
+.sales-outreach-calendar__week button:hover { border-color: #bfdbfe; background: #f8fbff; }
+.sales-outreach-calendar__week button.is-selected { border-color: var(--brand-primary); background: #eff6ff; color: var(--brand-primary); box-shadow: 0 0 0 1px var(--brand-primary); }
+.sales-outreach-calendar__week small { color: var(--text-tertiary); font-size: 10px; }
+.sales-outreach-calendar__week strong { font-size: var(--font-size-md); }
+.sales-outreach-calendar__week button span { color: var(--brand-primary); font-size: 9px; }
+.sales-outreach-calendar__availability { margin-top: 21px; border-top: 1px solid var(--border-subtle); padding-top: 18px; }
+.sales-outreach-booking-controls { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.sales-outreach-booking-controls > .select-wrap { width: min(100%, 290px); }
+.sales-outreach-calendar__availability h3 { color: var(--text-primary); font-size: var(--font-size-sm); }
+.sales-outreach-calendar__availability p { margin-top: 4px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.sales-outreach-slots { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.sales-outreach-slots button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #bfdbfe; border-radius: var(--radius-md); background: #f8fbff; padding: 8px 10px; color: var(--brand-primary); font: inherit; font-size: var(--font-size-xs); cursor: pointer; }
+.sales-outreach-slots button:hover { background: #eff6ff; }
+.sales-outreach-calendar-aside { display: grid; gap: 14px; }
+.sales-outreach-request { display: grid; gap: 6px; border-bottom: 1px solid var(--border-subtle); padding: 12px 0; }
+.sales-outreach-request:last-child { border-bottom: 0; }
+.sales-outreach-request > strong { color: var(--text-primary); font-size: var(--font-size-sm); }
+.sales-outreach-request > span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.sales-outreach-request > div { display: flex; gap: 7px; margin-top: 5px; }
+.sales-outreach-team-availability { padding: 17px; }
+.sales-outreach-team-availability > p { margin: 5px 0 14px; font-size: var(--font-size-xs); }
+.sales-outreach-team-availability > div { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid var(--border-subtle); padding: 10px 0; color: var(--text-secondary); font-size: var(--font-size-xs); }
+.sales-outreach-team-availability > div strong { color: var(--text-primary); font-weight: 600; }
+.sales-outreach-meeting-actions { display: flex; justify-content: flex-end; align-items: center; gap: 7px; border-top: 1px solid var(--border-subtle); padding-top: 9px; }
+.sales-outreach-meeting-actions > span { margin-right: auto; color: var(--text-secondary); font-size: var(--font-size-xs); }
+
+.sales-outreach-activity-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 15px; }
+.sales-outreach-activity-summary > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-white); padding: 14px; }
+.sales-outreach-activity-summary strong { color: var(--text-primary); font-size: 22px; }
+.sales-outreach-activity-summary span { color: var(--text-tertiary); font-size: var(--font-size-xs); text-align: right; }
+.sales-outreach-activity-panel > .sales-outreach-panel__heading { align-items: center; }
+.sales-outreach-activity-panel > .sales-outreach-panel__heading .select-wrap { width: 145px; }
+.sales-outreach-timeline { display: grid; }
+.sales-outreach-timeline-item { display: flex; gap: 13px; padding: 14px 0; }
+.sales-outreach-timeline-item:not(:last-child) .sales-outreach-timeline-icon::after { position: absolute; top: 31px; left: 14px; width: 1px; height: calc(100% + 1px); background: var(--border-default); content: ''; }
+.sales-outreach-timeline-icon { position: relative; display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: #eff6ff; color: var(--brand-primary); }
+.sales-outreach-timeline-icon.type-email { background: #eff6ff; color: #2563eb; }
+.sales-outreach-timeline-icon.type-call { background: #ecfdf5; color: #059669; }
+.sales-outreach-timeline-icon.type-meeting { background: #f5f3ff; color: #7c3aed; }
+.sales-outreach-timeline-icon.type-follow-up { background: #fffbeb; color: #d97706; }
+.sales-outreach-timeline-copy { min-width: 0; flex: 1; }
+.sales-outreach-timeline-top { display: flex; justify-content: space-between; gap: 10px; }
+.sales-outreach-timeline-top strong { color: var(--text-primary); font-size: var(--font-size-sm); }
+.sales-outreach-timeline-top time { flex: 0 0 auto; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.sales-outreach-timeline-copy p { margin-top: 4px; color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.5; }
+.sales-outreach-timeline-copy > small { display: block; margin-top: 5px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.sales-outreach-activity-foot { display: flex; align-items: center; gap: 6px; margin-top: 12px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+
+@media (max-width: 1100px) {
+  .sales-outreach-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sales-outreach-dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+  .sales-outreach-quick-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .sales-outreach-dashboard-grid,
+  .sales-outreach-composer-layout,
+  .sales-outreach-followup-layout,
+  .sales-outreach-calendar-layout { grid-template-columns: minmax(0, 1fr); }
+  .sales-outreach-campaign-summary,
+  .sales-outreach-activity-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sales-outreach-campaign-grid { grid-template-columns: minmax(0, 1fr); }
+  .sales-outreach-research-toolbar { grid-template-columns: minmax(0, 1fr); }
+  .sales-outreach-quick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sales-outreach-page > .page-header { align-items: flex-start; flex-direction: column; }
+  .sales-outreach-page .page-header__actions { width: 100%; flex-wrap: wrap; }
+}
+
+@media (max-width: 520px) {
+  .sales-outreach-kpis { grid-template-columns: minmax(0, 1fr); }
+  .sales-outreach-quick-grid { grid-template-columns: minmax(0, 1fr); }
+  .sales-outreach-funnel__row { grid-template-columns: 82px minmax(35px, 1fr) 44px 34px; gap: 6px; font-size: 10px; }
+  .sales-outreach-campaign-summary,
+  .sales-outreach-activity-summary { grid-template-columns: minmax(0, 1fr); }
+  .sales-outreach-campaign-detail__metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sales-outreach-followup-meta,
+  .sales-outreach-detail-grid { grid-template-columns: minmax(0, 1fr); }
+  .sales-outreach-campaign-form__grid { grid-template-columns: minmax(0, 1fr); }
+  .sales-outreach-campaign-form__field--wide { grid-column: auto; }
+  .sales-outreach-calendar__week { gap: 4px; }
+  .sales-outreach-calendar__week button { min-height: 66px; }
+  .sales-outreach-calendar__week button span { display: none; }
+  .sales-outreach-meeting { align-items: flex-start; flex-wrap: wrap; gap: 9px; }
+  .sales-outreach-meeting__date { width: 100%; }
+  .sales-outreach-meeting__person { flex-basis: calc(100% - 110px); }
+  .sales-outreach-meeting-actions { flex-wrap: wrap; }
+  .sales-outreach-meeting-actions > span { flex-basis: 100%; }
+  .sales-outreach-booking-controls { align-items: stretch; flex-direction: column; }
+  .sales-outreach-booking-controls > .select-wrap { width: 100%; }
+  .sales-outreach-followup-card { gap: 8px; }
+  .sales-outreach-followup-card__top { flex-direction: column; }
+  .sales-outreach-message-actions { justify-content: stretch; }
+  .sales-outreach-message-actions .btn { flex: 1 1 42%; }
+  .sales-outreach-timeline-top { flex-direction: column; gap: 3px; }
+  .sales-outreach-section-heading { align-items: flex-start; flex-direction: column; }
+}

@@ -22,6 +22,15 @@ const SALES_NAV_ITEMS = [
   { label: 'Campaigns', managementPath: '/sales/lead-management/campaigns', qualificationPath: '/sales/lead-management/campaigns' },
   { label: 'Activity', managementPath: '/sales/lead-management/activity', qualificationPath: '/coming-soon/lead-qualification/activity' },
 ];
+const SALES_OUTREACH_NAV_ITEMS = [
+  { label: 'Overview', path: '/coming-soon/sales-outreach' },
+  { label: 'Lead Research', path: '/coming-soon/sales-outreach/lead-research' },
+  { label: 'Personalized Outreach', path: '/coming-soon/sales-outreach/personalized-outreach' },
+  { label: 'Email Campaigns', path: '/coming-soon/sales-outreach/email-campaigns' },
+  { label: 'Follow-ups', path: '/coming-soon/sales-outreach/follow-ups' },
+  { label: 'Meeting Booking', path: '/coming-soon/sales-outreach/meeting-booking' },
+  { label: 'Activity', path: '/coming-soon/sales-outreach/activity' },
+];
 interface LayoutProps {
   children: React.ReactNode;
 }
@@ -52,7 +61,11 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     pathname === '/sales/lead-management' ||
     pathname.startsWith('/sales/lead-management/') ||
     pathname === '/coming-soon/lead-qualification' ||
-    pathname.startsWith('/coming-soon/lead-qualification/');
+    pathname.startsWith('/coming-soon/lead-qualification/') ||
+    pathname === '/coming-soon/sales-outreach' ||
+    pathname.startsWith('/coming-soon/sales-outreach/');
+  const isSalesOutreachModule = pathname === '/coming-soon/sales-outreach' ||
+    pathname.startsWith('/coming-soon/sales-outreach/');
   const isLeadQualificationModule = pathname === '/coming-soon/lead-qualification' ||
     pathname.startsWith('/coming-soon/lead-qualification/');
 
@@ -125,7 +138,22 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             role={isSalesModule ? 'navigation' : undefined}
             aria-label={isSalesModule ? 'Sales navigation' : undefined}
           >
-            {isSalesModule ? (
+            {isSalesOutreachModule ? (
+              SALES_OUTREACH_NAV_ITEMS.map((item) => {
+                const active = pathname === item.path;
+                return (
+                  <button
+                    key={item.label}
+                    type="button"
+                    className={`app-topbar__chip${active ? ' app-topbar__chip--active' : ''}`}
+                    onClick={() => navigate(item.path)}
+                    aria-current={active ? 'page' : undefined}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })
+            ) : isSalesModule ? (
               SALES_NAV_ITEMS.map((item) => {
                 const path = isLeadQualificationModule ? item.qualificationPath : item.managementPath;
                 const active = pathname === path;

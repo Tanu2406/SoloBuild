@@ -393,6 +393,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ? 'talent-acquisition'
     : pathname === '/' || pathname.startsWith('/solutions/hr/talent-acquisition')
       ? 'talent-acquisition'
+    : pathname === '/coming-soon/sales-outreach' || pathname.startsWith('/coming-soon/sales-outreach/')
+      ? 'sales-outreach'
     : pathname === '/solutions/sales/lead-management'
       ? 'lead-management'
     : pathname === '/sales/lead-management' || pathname.startsWith('/sales/lead-management/')
@@ -556,6 +558,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   >
                     HR Solutions / Talent Acquisition
                   </NavLink>
+                ) : contextualSelection === 'sales-outreach' ? (
+                  <NavLink
+                    to="/coming-soon/sales-outreach"
+                    className={({ isActive }) =>
+                      `sidebar__context-label sidebar__context-label-link${isActive ? ' sidebar__context-label-link--active' : ''}`
+                    }
+                    onClick={() => {
+                      onNavigate();
+                      setMobileOpen(false);
+                    }}
+                  >
+                    Sales / Sales Outreach
+                  </NavLink>
                 ) : (
                   <p className="sidebar__context-label">
                     {`${contextualGroup.name} / ${contextualGroup.items.find((item) => item.id === contextualSelection)?.name}`}
@@ -652,6 +667,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                   navigateFromSidebar('/coming-soon/lead-qualification');
                                 } else if (group.id === 'hr' && item.id === 'talent-acquisition') {
                                   navigateFromSidebar('/solutions/hr/talent-acquisition');
+                                } else if (group.id === 'sales' && item.id === 'sales-outreach') {
+                                  navigateFromSidebar('/coming-soon/sales-outreach');
                                 }
                               }}
                             >

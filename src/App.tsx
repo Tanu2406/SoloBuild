@@ -35,6 +35,15 @@ import QualificationScoring from './pages/sales/lead/qualification/LeadScoring';
 import IntentDetection from './pages/sales/lead/qualification/IntentDetection';
 import QualificationResults from './pages/sales/lead/qualification/QualificationResults';
 import QualificationActivity from './pages/sales/lead/qualification/Activity';
+import {
+  SalesOutreachActivity,
+  SalesOutreachCampaigns,
+  SalesOutreachDashboard,
+  SalesOutreachFollowUps,
+  SalesOutreachLeadResearch,
+  SalesOutreachMeetingBooking,
+  SalesOutreachPersonalized,
+} from './pages/sales/outreach/SalesOutreach';
 
 // Styles
 import './styles/global.css';
@@ -82,6 +91,13 @@ const App: React.FC = () => {
                     <Route path="/coming-soon/lead-qualification/intent-detection" element={<IntentDetection />} />
                     <Route path="/coming-soon/lead-qualification/qualification-results" element={<QualificationResults />} />
                     <Route path="/coming-soon/lead-qualification/activity" element={<QualificationActivity />} />
+                    <Route path="/coming-soon/sales-outreach" element={<SalesOutreachDashboard />} />
+                    <Route path="/coming-soon/sales-outreach/lead-research" element={<SalesOutreachLeadResearch />} />
+                    <Route path="/coming-soon/sales-outreach/personalized-outreach" element={<SalesOutreachPersonalized />} />
+                    <Route path="/coming-soon/sales-outreach/email-campaigns" element={<SalesOutreachCampaigns />} />
+                    <Route path="/coming-soon/sales-outreach/follow-ups" element={<SalesOutreachFollowUps />} />
+                    <Route path="/coming-soon/sales-outreach/meeting-booking" element={<SalesOutreachMeetingBooking />} />
+                    <Route path="/coming-soon/sales-outreach/activity" element={<SalesOutreachActivity />} />
                     <Route path="/solutions/:group/:solution" element={<SolutionDestination />} />
                     <Route path="/coming-soon/:context/:item" element={<SolutionDestination />} />
                   </Routes>
