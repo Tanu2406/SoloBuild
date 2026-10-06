@@ -58,6 +58,12 @@ import PipelineManagement from './pages/sales/opportunities/PipelineManagement';
 import DealUpdates from './pages/sales/opportunities/DealUpdates';
 import OpportunityFollowUps from './pages/sales/opportunities/FollowUps';
 import OpportunityActivity from './pages/sales/opportunities/Activity';
+import SalesAnalyticsDashboard from './pages/sales/analytics/SalesDashboard';
+import PipelineAnalytics from './pages/sales/analytics/PipelineAnalytics';
+import ConversionAnalytics from './pages/sales/analytics/ConversionAnalytics';
+import RevenueInsights from './pages/sales/analytics/RevenueInsights';
+import Forecasting from './pages/sales/analytics/Forecasting';
+import ActivityAnalytics from './pages/sales/analytics/Activity';
 
 // Styles
 import './styles/global.css';
@@ -126,6 +132,12 @@ const App: React.FC = () => {
                     <Route path="/coming-soon/opportunity-management/deal-updates" element={<DealUpdates />} />
                     <Route path="/coming-soon/opportunity-management/follow-ups" element={<OpportunityFollowUps />} />
                     <Route path="/coming-soon/opportunity-management/activity" element={<OpportunityActivity />} />
+                    <Route path="/coming-soon/sales-analytics/sales-dashboard" element={<SalesAnalyticsDashboard />} />
+                    <Route path="/coming-soon/sales-analytics/pipeline-analytics" element={<PipelineAnalytics />} />
+                    <Route path="/coming-soon/sales-analytics/conversion-analytics" element={<ConversionAnalytics />} />
+                    <Route path="/coming-soon/sales-analytics/revenue-insights" element={<RevenueInsights />} />
+                    <Route path="/coming-soon/sales-analytics/forecasting" element={<Forecasting />} />
+                    <Route path="/coming-soon/sales-analytics/activity" element={<ActivityAnalytics />} />
                     <Route path="/solutions/:group/:solution" element={<SolutionDestination />} />
                     <Route path="/coming-soon/:context/:item" element={<SolutionDestination />} />
                   </Routes>

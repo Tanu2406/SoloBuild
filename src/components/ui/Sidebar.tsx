@@ -597,6 +597,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   >
                     Sales / Opportunity Management
                   </NavLink>
+                ) : contextualSelection === 'sales-analytics' ? (
+                  <NavLink
+                    to="/coming-soon/sales-analytics/sales-dashboard"
+                    className={({ isActive }) =>
+                      `sidebar__context-label sidebar__context-label-link${isActive ? ' sidebar__context-label-link--active' : ''}`
+                    }
+                    onClick={() => {
+                      onNavigate();
+                      setMobileOpen(false);
+                    }}
+                  >
+                    Sales / Sales Analytics
+                  </NavLink>
                 ) : (
                   <p className="sidebar__context-label">
                     {`${contextualGroup.name} / ${contextualGroup.items.find((item) => item.id === contextualSelection)?.name}`}
@@ -699,6 +712,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                   navigateFromSidebar('/coming-soon/meeting-scheduling');
                                 } else if (group.id === 'sales' && item.id === 'opportunity-management') {
                                   navigateFromSidebar('/coming-soon/opportunity-management');
+                                } else if (group.id === 'sales' && item.id === 'sales-analytics') {
+                                  navigateFromSidebar('/coming-soon/sales-analytics/sales-dashboard');
                                 }
                               }}
                             >
