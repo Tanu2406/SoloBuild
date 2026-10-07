@@ -216,7 +216,9 @@ const ScreeningReportHiring: React.FC = () => {
   }
 
   // Aggregate counts
-  const resumeScreened = candidates.filter(c => c.matchScore !== undefined).length;
+  const resumeScreened = candidates.filter(c =>
+    c.documentScreeningId !== undefined || c.matchScore !== undefined
+  ).length;
   const callScreened = null;
   const strongMatches = candidates.filter(c => (c.matchScore ?? 0) >= 80 && c.compatibility === 'compatible').length;
   const shortlisted = null;

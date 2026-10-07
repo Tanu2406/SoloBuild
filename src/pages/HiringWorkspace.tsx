@@ -243,16 +243,19 @@ const HiringWorkspace: React.FC = () => {
   const recruiter = recruiters.find(r => r.id === hiring.aiRecruiterId);
   const hiringActivity = allActivity.filter(a => a.hiringTitle === hiring.title).slice(0, 20);
   const hiringCalls = allCalls.filter(c => c.hiringId === hiring.id);
-  const screenedCandidates = candidates.filter(c => c.matchScore !== undefined);
+  const screenedCandidates = candidates.filter(c =>
+    c.documentScreeningId !== undefined || c.matchScore !== undefined
+  );
+  const pendingScreeningCount = candidates.length - screenedCandidates.length;
   const shortlistedCandidates = candidates.filter(c =>
     ['shortlisted', 'interview_scheduled', 'interview_completed', 'hired'].includes(c.status)
   );
   const hasScreeningData = screenedCandidates.length > 0;
 
   // ——— Screening tab helpers ———
-  const compatibleCandidates = candidates.filter(c => c.compatibility === 'compatible');
-  const notCompatibleCandidates = candidates.filter(c => c.compatibility === 'not_compatible');
-  const screeningFiltered = candidates.filter(c => {
+  const compatibleCandidates = screenedCandidates.filter(c => c.compatibility === 'compatible');
+  const notCompatibleCandidates = screenedCandidates.filter(c => c.compatibility === 'not_compatible');
+  const screeningFiltered = screenedCandidates.filter(c => {
     const matchesFilter =
       screeningFilter === 'all' ||
       c.compatibility === screeningFilter;
@@ -388,7 +391,7 @@ const HiringWorkspace: React.FC = () => {
 
   const workspaceTabs = [
     { id: 'overview',   label: 'Overview' },
-    ...(hasScreeningData ? [{ id: 'screening', label: 'Screening Results', count: candidates.length }] : []),
+    ...(hasScreeningData ? [{ id: 'screening', label: 'Screening Results', count: screenedCandidates.length }] : []),
     { id: 'candidates', label: 'Candidates', count: candidates.length },
     { id: 'calls',      label: 'Call Logs',  count: hiringCalls.length },
     { id: 'results',    label: 'Shortlist & Decisions', count: shortlistedCandidates.length },
@@ -732,8 +735,9 @@ const HiringWorkspace: React.FC = () => {
                 AI Resume Screening Results
               </h3>
               <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)', marginTop: '3px' }}>
-                {compatibleCandidates.length} compatible · {notCompatibleCandidates.length} not compatible ·
-                {' '}AI evaluated each resume against the job description.
+                {screenedCandidates.length} screened · {compatibleCandidates.length} compatible ·
+                {' '}{notCompatibleCandidates.length} not compatible
+                {pendingScreeningCount > 0 && ` · ${pendingScreeningCount} not yet screened`}
               </p>
             </div>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -774,7 +778,7 @@ const HiringWorkspace: React.FC = () => {
                 background: screeningFilter === f ? 'var(--brand-primary-light)' : 'var(--bg-white)',
                 color: screeningFilter === f ? 'var(--brand-primary)' : 'var(--text-secondary)',
               }}>
-                {f === 'all' ? `All (${candidates.length})` : f === 'compatible' ? `✓ Compatible (${compatibleCandidates.length})` : `✗ Not Compatible (${notCompatibleCandidates.length})`}
+                {f === 'all' ? `Screened (${screenedCandidates.length})` : f === 'compatible' ? `✓ Compatible (${compatibleCandidates.length})` : `✗ Not Compatible (${notCompatibleCandidates.length})`}
               </button>
             ))}
             <input
@@ -793,7 +797,8 @@ const HiringWorkspace: React.FC = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {screeningFiltered.map(c => {
               const included = isIncluded(c);
-              const score = c.matchScore || 0;
+              const score = c.matchScore;
+              const hasCompatibility = c.compatibility !== undefined;
               return (
                 <div key={c.id} className="screening-card" style={{
                   background: 'var(--bg-white)', border: `1px solid ${included ? 'var(--border-default)' : 'var(--border-subtle)'}`,
@@ -809,17 +814,30 @@ const HiringWorkspace: React.FC = () => {
                         <span style={{
                           fontSize: '11px', fontWeight: 700, padding: '2px 8px',
                           borderRadius: 'var(--radius-full)',
-                          background: scoreBg(score), color: scoreColor(score),
+                          background: score === undefined ? 'var(--bg-subtle)' : scoreBg(score),
+                          color: score === undefined ? 'var(--text-muted)' : scoreColor(score),
                         }}>
-                          {score}% Match
+                          {score === undefined ? 'Score unavailable' : `${score}% Match`}
                         </span>
                         <span style={{
                           fontSize: '11px', fontWeight: 600, padding: '2px 8px',
                           borderRadius: 'var(--radius-full)',
-                          background: c.compatibility === 'compatible' ? 'var(--status-success-bg)' : 'var(--status-error-bg)',
-                          color: c.compatibility === 'compatible' ? 'var(--status-success-text)' : 'var(--status-error-text)',
+                          background: c.compatibility === 'compatible'
+                            ? 'var(--status-success-bg)'
+                            : c.compatibility === 'not_compatible'
+                              ? 'var(--status-error-bg)'
+                              : 'var(--bg-subtle)',
+                          color: c.compatibility === 'compatible'
+                            ? 'var(--status-success-text)'
+                            : c.compatibility === 'not_compatible'
+                              ? 'var(--status-error-text)'
+                              : 'var(--text-muted)',
                         }}>
-                          {c.compatibility === 'compatible' ? '✓ Compatible' : '✗ Not Compatible'}
+                          {c.compatibility === 'compatible'
+                            ? '✓ Compatible'
+                            : c.compatibility === 'not_compatible'
+                              ? '✗ Not Compatible'
+                              : hasCompatibility ? 'Unclassified' : 'Not scored'}
                         </span>
                       </div>
                       <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)', marginTop: '2px' }}>
@@ -887,8 +905,10 @@ const HiringWorkspace: React.FC = () => {
             {screeningFiltered.length === 0 && (
               <EmptyState
                 icon={<Users size={24} />}
-                title="No candidates match this filter"
-                description="Try a different filter or clear the search."
+                title={screenedCandidates.length === 0 ? 'No screening results yet' : 'No candidates match this filter'}
+                description={screenedCandidates.length === 0 && pendingScreeningCount > 0
+                  ? `${pendingScreeningCount} candidate${pendingScreeningCount === 1 ? '' : 's'} in this campaign have not been document screened. They remain available in the Candidates tab.`
+                  : 'Try a different filter or clear the search.'}
               />
             )}
           </div>

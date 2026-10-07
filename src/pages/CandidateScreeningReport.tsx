@@ -226,10 +226,10 @@ const CandidateScreeningReport: React.FC = () => {
       }
 
       let screening;
-      if (screeningResult.status === 'fulfilled' &&
-          screeningResult.value.candidate_id === candidateId &&
-          screeningResult.value.campaign_id === hiringId) {
-        screening = screeningResult.value;
+      if (screeningResult.status === 'fulfilled') {
+        screening = screeningResult.value.find(item =>
+          item.candidate_id === candidateId && item.campaign_id === hiringId,
+        );
       } else {
         const fallbackResult = await Promise.allSettled([
           listCampaignDocumentScreenings(hiringId),
@@ -241,24 +241,16 @@ const CandidateScreeningReport: React.FC = () => {
             item.candidate_id === candidateId && item.campaign_id === hiringId,
           );
         }
-        if (!screening) {
-          const reason = screeningResult.status === 'rejected'
-            ? screeningResult.reason
-            : new Error('The screening response did not match the requested candidate and campaign.');
-          errors.push(reason instanceof Error
-            ? `Document-screening data could not be loaded: ${reason.message}`
-            : 'Document-screening data could not be loaded.');
-          if (fallback.status === 'rejected') {
-            errors.push(fallback.reason instanceof Error
-              ? `Campaign screening results could not be loaded: ${fallback.reason.message}`
-              : 'Campaign screening results could not be loaded.');
-          }
+        if (fallback.status === 'rejected') {
+          errors.push(fallback.reason instanceof Error
+            ? `Campaign screening results could not be loaded: ${fallback.reason.message}`
+            : 'Campaign screening results could not be loaded.');
         }
       }
 
       if (mappedCandidate && screening) {
         mappedCandidate = applyDocumentScreening(mappedCandidate, screening);
-      } else if (mappedCandidate && !campaignCandidate) {
+      } else if (mappedCandidate) {
         mappedCandidate = {
           ...mappedCandidate,
           matchScore: undefined,

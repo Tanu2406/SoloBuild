@@ -288,7 +288,17 @@ export function mapCampaignCandidate(
     hiringId: candidate.campaign_id,
     hiringTitle,
     status: 'added',
+    matchScore: undefined,
+    compatibility: undefined,
+    strongMatches: undefined,
+    missingRequirements: undefined,
+    aiRecommendation: undefined,
+    aiSummary: undefined,
     includedInCallList: false,
+    documentScreeningId: undefined,
+    documentScreeningSummary: undefined,
+    documentScreeningCreatedAt: undefined,
+    documentScreeningUpdatedAt: undefined,
     lastActivity: '—',
   };
   return screening ? applyDocumentScreening(mappedCandidate, screening) : mappedCandidate;
@@ -318,8 +328,8 @@ export async function listCampaignDocumentScreenings(
 export async function getCandidateDocumentScreening(
   campaignId: string,
   candidateId: string
-): Promise<DocumentScreeningResponse> {
-  return apiRequest<DocumentScreeningResponse>(
+): Promise<DocumentScreeningResponse[]> {
+  return apiRequest<DocumentScreeningResponse[]>(
     `/campaigns/${campaignId}/candidates/${candidateId}/document-screenings`,
     { method: 'GET' }
   );

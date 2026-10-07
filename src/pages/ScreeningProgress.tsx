@@ -9,7 +9,6 @@ import { Avatar } from '../components/ui/Avatar';
 import { useAppStore, useHiring, useRecruiters } from '../store/appStore';
 import type { Candidate } from '../types';
 import {
-  getCandidateDocumentScreening,
   getScreeningStatus,
   listCampaignCandidates,
   listCampaignDocumentScreenings,
@@ -38,7 +37,9 @@ const ScreeningProgress: React.FC = () => {
 
   const compatible = screenedCandidates.filter(c => c.compatibility === 'compatible');
   const incompatible = screenedCandidates.filter(c => c.compatibility === 'not_compatible');
-  const resumeCount = batchStatus?.total_candidates || screenedCandidates.length || requestedResumeCount;
+  const resumeCount = done
+    ? screenedCandidates.length
+    : batchStatus?.total_candidates || requestedResumeCount;
   const screeningError = error || missingBatchMessage;
 
   useEffect(() => {
@@ -67,21 +68,18 @@ const ScreeningProgress: React.FC = () => {
           const screeningByCandidate = new Map(
             bulkScreenings.map(screening => [screening.candidate_id, screening]),
           );
-          const missingScreenings = candidates.filter(candidate => !screeningByCandidate.has(candidate.id));
-          const individualScreenings = await Promise.all(
-            missingScreenings.map(candidate => getCandidateDocumentScreening(id, candidate.id)),
-          );
-          individualScreenings.forEach(screening => screeningByCandidate.set(screening.candidate_id, screening));
-
           if (cancelled) return;
-          const results = candidates.map(candidate => mapCampaignCandidate(
+          const mappedCandidates = candidates.map(candidate => mapCampaignCandidate(
             candidate,
             screeningByCandidate.get(candidate.id),
             hiring?.title ?? '',
           ));
+          const results = mappedCandidates.filter(candidate =>
+            candidate.documentScreeningId !== undefined || candidate.matchScore !== undefined
+          );
           setScreenedCandidates(results);
           setDone(true);
-          dispatch({ type: 'ADD_CANDIDATES', payload: { hiringId: id, candidates: results } });
+          dispatch({ type: 'ADD_CANDIDATES', payload: { hiringId: id, candidates: mappedCandidates } });
           dispatch({
             type: 'UPDATE_HIRING',
             payload: { id, updates: { status: 'screened', resumeCount: results.length } },
