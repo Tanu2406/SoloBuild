@@ -69,6 +69,16 @@ export interface ApiRequestOptions {
   auth?: boolean;
 }
 
+export class ApiRequestError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+  }
+}
+
 export async function apiRequest<T = unknown>(
   path: string,
   options: ApiRequestOptions = {}
@@ -129,7 +139,7 @@ export async function apiRequest<T = unknown>(
         message = JSON.stringify(detail);
       }
     } catch { /* ignore parse errors */ }
-    throw new Error(message);
+    throw new ApiRequestError(message, response.status);
   }
 
   // 204 No Content

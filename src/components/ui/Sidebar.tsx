@@ -13,12 +13,15 @@ import {
   MessageSquare,
   Plus,
   Settings,
+  Trash2,
   User,
   Users,
   X,
 } from 'lucide-react';
 import { useHirings, useCandidates, useInterviews } from '../../store/appStore';
 import { useAuth } from '../../context/AuthContext';
+import { deleteChatSession } from '../../services/chatService';
+import { useToast } from './Toast';
 
 interface NavItem {
   path: string;
@@ -36,6 +39,7 @@ interface SidebarProps {
   onNewChat: () => void;
   onNavigate: () => void;
   onSelectChat: (chatId: string) => void;
+  onDeleteChat: (chatId: string) => void;
   recentChats: RecentChatSummary[];
   selectedChatId: string | null;
 }
@@ -349,10 +353,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNewChat,
   onNavigate,
   onSelectChat,
+  onDeleteChat,
   recentChats,
   selectedChatId,
 }) => {
   const { logout, user } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -360,6 +366,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [profileOpen, setProfileOpen] = useState(false);
   const [selectedContextId, setSelectedContextId] = useState<string | null>(null);
   const [contextResetPath, setContextResetPath] = useState<string | null>(null);
+  const [deletingChatIds, setDeletingChatIds] = useState<Set<string>>(() => new Set());
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     hr: false,
     sales: false,
@@ -415,6 +422,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onNavigate();
     setMobileOpen(false);
     navigate(path);
+  };
+
+  const handleDeleteChat = async (chatId: string) => {
+    if (deletingChatIds.has(chatId)) return;
+    setDeletingChatIds(current => new Set(current).add(chatId));
+    try {
+      await deleteChatSession(chatId);
+      onDeleteChat(chatId);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Conversation could not be deleted.', 'error');
+    } finally {
+      setDeletingChatIds(current => {
+        const next = new Set(current);
+        next.delete(chatId);
+        return next;
+      });
+    }
   };
 
   return (
@@ -482,23 +506,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
             <div className="sidebar__recent-list">
               {visibleChats.map((chat) => (
-                <button
+                <div
                   key={chat.id}
-                  type="button"
-                  className={`sidebar__recent-chat${selectedChatId === chat.id ? ' sidebar__recent-chat--active' : ''}`}
-                  title={chat.title}
-                  onClick={() => {
-                    onSelectChat(chat.id);
-                    setMobileOpen(false);
-                  }}
+                  className={`sidebar__recent-chat-row${selectedChatId === chat.id ? ' sidebar__recent-chat-row--active' : ''}`}
                 >
-                  <span className="sidebar__recent-title">{chat.title}</span>
-                  <span className="sidebar__recent-meta">
-                    <MessageSquare size={12} />
-                    <span>Chat</span>
-                    <span>{relativeTime(chat.updatedAt)}</span>
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    className="sidebar__recent-chat"
+                    title={chat.title}
+                    onClick={() => {
+                      onSelectChat(chat.id);
+                      setMobileOpen(false);
+                    }}
+                  >
+                    <span className="sidebar__recent-title">{chat.title}</span>
+                    <span className="sidebar__recent-meta">
+                      <MessageSquare size={12} />
+                      <span>Chat</span>
+                      <span>{relativeTime(chat.updatedAt)}</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="sidebar__recent-delete"
+                    aria-label={`Delete chat: ${chat.title}`}
+                    title="Delete chat"
+                    disabled={deletingChatIds.has(chat.id)}
+                    onClick={() => { void handleDeleteChat(chat.id); }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               ))}
               {recentChats.length === 0 && (
                 <span style={{ padding: '8px 10px', color: '#94a3b8', fontSize: 11 }}>No conversations yet</span>

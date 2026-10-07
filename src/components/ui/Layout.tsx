@@ -48,6 +48,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [newChatRequest, setNewChatRequest] = useState(0);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [recentChats, setRecentChats] = useState<ChatConversationSummary[]>([]);
+  const [deletedChatId, setDeletedChatId] = useState<string | null>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
@@ -125,6 +126,12 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         onSelectChat={(chatId) => {
           setSelectedChatId(chatId);
           setChatMode(true);
+        }}
+        onDeleteChat={(chatId) => {
+          setRecentChats(chats => chats.filter(chat => chat.id !== chatId));
+          setDeletedChatId(chatId);
+          setSelectedChatId(current => current === chatId ? null : current);
+          if (selectedChatId === chatId) setChatMode(false);
         }}
         recentChats={recentChats}
         selectedChatId={selectedChatId}
@@ -311,6 +318,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             open={chatMode}
             newChatRequest={newChatRequest}
             selectedChatId={selectedChatId}
+            deletedChatId={deletedChatId}
             onSelectChat={setSelectedChatId}
             onRecentChatsChange={updateRecentChats}
             onExit={() => setChatMode(false)}

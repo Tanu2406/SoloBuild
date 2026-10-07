@@ -11,6 +11,7 @@ import {
   sendChatMessage,
   type ChatSessionListItem,
 } from '../../services/chatService';
+import { ApiRequestError } from '../../services/api';
 import { useToast } from './Toast';
 import './chatbot/chatbot.css';
 
@@ -27,6 +28,7 @@ interface ChatModeProps {
   open: boolean;
   newChatRequest: number;
   selectedChatId: string | null;
+  deletedChatId: string | null;
   onSelectChat: (chatId: string | null) => void;
   onRecentChatsChange: (chats: ChatConversationSummary[]) => void;
   onExit: () => void;
@@ -52,6 +54,7 @@ export const ChatMode: React.FC<ChatModeProps> = ({
   open,
   newChatRequest,
   selectedChatId,
+  deletedChatId,
   onSelectChat,
   onRecentChatsChange,
   onExit,
@@ -69,6 +72,11 @@ export const ChatMode: React.FC<ChatModeProps> = ({
   const [sessionListLoaded, setSessionListLoaded] = useState(false);
   const [sessionListError, setSessionListError] = useState('');
   const [historyError, setHistoryError] = useState('');
+  const pendingNewSessionRef = useRef<{
+    request: number;
+    promise: ReturnType<typeof createChatSession>;
+  } | null>(null);
+  const handledNewChatRequestRef = useRef(newChatRequest);
 
   const selectedConversation = useMemo(
     () => conversations.find(conversation => conversation.id === selectedChatId) ?? null,
@@ -91,7 +99,15 @@ export const ChatMode: React.FC<ChatModeProps> = ({
     let cancelled = false;
     listChatSessions()
       .then(sessions => {
-        if (!cancelled) setConversations(sessions.map(fromSession));
+        if (cancelled) return;
+        setConversations(current => {
+          const currentById = new Map(current.map(conversation => [conversation.id, conversation]));
+          const listedIds = new Set(sessions.map(session => session.id));
+          return [
+            ...sessions.map(session => currentById.get(session.id) ?? fromSession(session)),
+            ...current.filter(conversation => !listedIds.has(conversation.id)),
+          ];
+        });
       })
       .catch(error => {
         if (!cancelled) setSessionListError(errorText(error));
@@ -111,6 +127,52 @@ export const ChatMode: React.FC<ChatModeProps> = ({
   useEffect(() => {
     loadedConversationIdsRef.current = loadedConversationIds;
   }, [loadedConversationIds]);
+
+  useEffect(() => {
+    if (!deletedChatId) return;
+    setConversations(current => current.filter(conversation => conversation.id !== deletedChatId));
+    setLoadedConversationIds(current => {
+      const next = new Set(current);
+      next.delete(deletedChatId);
+      loadedConversationIdsRef.current = next;
+      return next;
+    });
+    if (selectedChatId === deletedChatId) onSelectChat(null);
+  }, [deletedChatId, onSelectChat, selectedChatId]);
+
+  useEffect(() => {
+    if (!open || handledNewChatRequestRef.current === newChatRequest) return;
+    handledNewChatRequestRef.current = newChatRequest;
+    setDraftChat({ request: newChatRequest, messages: [] });
+    setHistoryError('');
+
+    const promise = createChatSession(null);
+    pendingNewSessionRef.current = { request: newChatRequest, promise };
+    promise
+      .then(session => {
+        const isCurrentRequest = pendingNewSessionRef.current?.request === newChatRequest;
+        setConversations(current => [
+          fromSession(session),
+          ...current.filter(conversation => conversation.id !== session.id),
+        ]);
+        setLoadedConversationIds(current => {
+          const next = new Set(current);
+          next.add(session.id);
+          loadedConversationIdsRef.current = next;
+          return next;
+        });
+        if (isCurrentRequest) {
+          onSelectChat(session.id);
+          pendingNewSessionRef.current = null;
+        }
+      })
+      .catch(error => {
+        if (pendingNewSessionRef.current?.request !== newChatRequest) return;
+        pendingNewSessionRef.current = null;
+        const message = errorText(error);
+        showToast(`Chat session could not be created: ${message}`, 'error');
+      });
+  }, [newChatRequest, onSelectChat, open, showToast]);
 
   useEffect(() => {
     if (!selectedChatId || loadedConversationIdsRef.current.has(selectedChatId)) return;
@@ -166,7 +228,10 @@ export const ChatMode: React.FC<ChatModeProps> = ({
     if (!conversationId) {
       setDraftChat({ request: newChatRequest, messages: [userMessage] });
       try {
-        const session = await createChatSession(null);
+        const pendingNewSession = pendingNewSessionRef.current;
+        const session = pendingNewSession?.request === newChatRequest
+          ? await pendingNewSession.promise
+          : await createChatSession(null);
         const conversation = {
           ...fromSession(session),
           title: session.title?.trim() || messageText.slice(0, 80),
@@ -176,6 +241,9 @@ export const ChatMode: React.FC<ChatModeProps> = ({
         conversationId = session.id;
         setConversations(current => [conversation, ...current.filter(item => item.id !== session.id)]);
         setDraftChat({ request: newChatRequest, messages: [] });
+        if (pendingNewSessionRef.current?.request === newChatRequest) {
+          pendingNewSessionRef.current = null;
+        }
         setLoadedConversationIds(current => {
           const next = new Set(current);
           next.add(session.id);
@@ -198,22 +266,58 @@ export const ChatMode: React.FC<ChatModeProps> = ({
       appendMessage(conversationId, userMessage);
     }
 
+    let activeConversationId = conversationId;
     try {
-      const response = await sendChatMessage(conversationId, messageText);
-      appendMessage(conversationId, {
+      let response;
+      try {
+        response = await sendChatMessage(activeConversationId, messageText);
+      } catch (error) {
+        if (!(error instanceof ApiRequestError && error.status === 404 && selectedChatId)) {
+          throw error;
+        }
+
+        const session = await createChatSession(null);
+        activeConversationId = session.id;
+        const notice: ChatMessageData = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: 'This conversation is no longer available, so I started a new one. Earlier messages could not be restored.',
+        };
+        const replacementConversation: ChatConversation = {
+          ...fromSession(session),
+          title: messageText.slice(0, 80),
+          messages: [notice, userMessage],
+          updatedAt: Date.now(),
+        };
+        setConversations(current => [
+          replacementConversation,
+          ...current.filter(item => item.id !== selectedChatId),
+        ]);
+        setLoadedConversationIds(current => {
+          const next = new Set(current);
+          next.delete(selectedChatId);
+          next.add(session.id);
+          loadedConversationIdsRef.current = next;
+          return next;
+        });
+        onSelectChat(session.id);
+        response = await sendChatMessage(activeConversationId, messageText);
+      }
+
+      appendMessage(activeConversationId, {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: response.text,
         ...(response.uiAction ? { uiAction: response.uiAction } : {}),
       });
       setConversations(current => current.map(conversation => (
-        conversation.id === conversationId
+        conversation.id === activeConversationId
           ? { ...conversation, title: conversation.title === 'New chat' ? messageText.slice(0, 80) : conversation.title, updatedAt: Date.now() }
           : conversation
       )));
     } catch (error) {
       const message = errorText(error);
-      appendMessage(conversationId, {
+      appendMessage(activeConversationId, {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: `I couldn't complete that request. ${message}`,

@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import CreateHiring from '../../../pages/CreateHiring';
-import Hiring from '../../../pages/Hiring';
 import HiringWorkspace from '../../../pages/HiringWorkspace';
 import ScreeningProgress from '../../../pages/ScreeningProgress';
 import CandidateScreeningReport from '../../../pages/CandidateScreeningReport';
-import { getScreeningStatus, getUploadStatus } from '../../../services/campaignService';
-import type { ScreeningBatchStatus, UploadBatchStatus } from '../../../services/campaignService';
+import {
+  getScreeningStatus,
+  getUploadStatus,
+  listCampaigns,
+} from '../../../services/campaignService';
+import type { CampaignListItem, ScreeningBatchStatus, UploadBatchStatus } from '../../../services/campaignService';
 import type { UIAction } from './types';
 
 interface ChatActionRendererProps {
@@ -40,7 +43,7 @@ function ActionMessage({ children, error = false }: { children: React.ReactNode;
   );
 }
 
-function ExistingPageAction({ action }: ChatActionRendererProps) {
+function ExistingPageAction({ action, onActionTrigger }: ChatActionRendererProps) {
   const payload = action.payload;
   const campaignId = stringValue(payload.campaign_id) ?? stringValue(payload.hiring_id);
   const candidateId = stringValue(payload.candidate_id);
@@ -52,10 +55,7 @@ function ExistingPageAction({ action }: ChatActionRendererProps) {
   switch (action.type) {
     case 'SHOW_CAMPAIGN_LIST':
     case 'SHOW_CAMPAIGN_PICKER':
-      location = '/hiring';
-      routePath = '/hiring';
-      page = <Hiring />;
-      break;
+      return <CampaignListAction action={action} />;
     case 'SHOW_CAMPAIGN_DETAIL':
       if (!campaignId) {
         missing = 'This action did not include a campaign ID.';
@@ -104,10 +104,7 @@ function ExistingPageAction({ action }: ChatActionRendererProps) {
       break;
     }
     case 'SHOW_CAMPAIGN_CREATE_FORM':
-      location = '/hiring/create';
-      routePath = '/hiring/create';
-      page = <CreateHiring initialTitle={stringValue(payload.initial_title)} />;
-      break;
+      return <CampaignCreateAction action={action} onActionTrigger={onActionTrigger} />;
     default:
       return null;
   }
@@ -129,6 +126,110 @@ function ExistingPageAction({ action }: ChatActionRendererProps) {
         <Route path={routePath} element={page ? React.cloneElement(page, { key: location }) : null} />
       </Routes>
     </div>
+  );
+}
+
+function CampaignListAction({ action }: { action: UIAction }) {
+  const [campaigns, setCampaigns] = useState<CampaignListItem[] | null>(null);
+  const [selectedCampaign, setSelectedCampaign] = useState<CampaignListItem | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    listCampaigns()
+      .then(result => {
+        if (!cancelled) setCampaigns(result);
+      })
+      .catch(reason => {
+        if (!cancelled) {
+          setError(reason instanceof Error ? reason.message : 'Campaigns could not be loaded.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const campaignPicker = action.type === 'SHOW_CAMPAIGN_PICKER';
+
+  if (selectedCampaign) {
+    return (
+      <section style={panelStyle} aria-label={`${selectedCampaign.title} campaign details`}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <strong style={{ color: '#0f172a', fontSize: 14 }}>{selectedCampaign.title}</strong>
+          <button
+            type="button"
+            onClick={() => setSelectedCampaign(null)}
+            style={{ border: 0, background: 'transparent', color: '#2563eb', cursor: 'pointer', fontSize: 12 }}
+          >
+            All campaigns
+          </button>
+        </div>
+        <ExistingPageAction
+          action={{ type: 'SHOW_CAMPAIGN_DETAIL', payload: { campaign_id: selectedCampaign.id } }}
+          onActionTrigger={() => {}}
+        />
+      </section>
+    );
+  }
+
+  return (
+    <section style={panelStyle} aria-label={campaignPicker ? 'Choose a campaign' : 'Your campaigns'}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <strong style={{ color: '#0f172a', fontSize: 14 }}>
+            {campaignPicker ? 'Choose a campaign' : 'Your campaigns'}
+          </strong>
+          <ActionMessage>
+            {campaignPicker
+              ? stringValue(action.payload.reason) ?? 'Select a campaign to continue.'
+              : 'Select a campaign to open its existing hiring workspace details here.'}
+          </ActionMessage>
+        </div>
+      </div>
+
+      {loading && <ActionMessage>Loading campaigns…</ActionMessage>}
+      {error && <ActionMessage error>{error}</ActionMessage>}
+      {!loading && !error && campaigns?.length === 0 && (
+        <ActionMessage>You don’t have any campaigns yet.</ActionMessage>
+      )}
+
+      {campaigns && campaigns.length > 0 && (
+        <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+          {campaigns.map(campaign => (
+            <button
+              key={campaign.id}
+              type="button"
+              onClick={() => setSelectedCampaign(campaign)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                width: '100%',
+                border: '1px solid #e2e8f0',
+                borderRadius: 9,
+                background: '#fff',
+                padding: '11px 12px',
+                color: '#0f172a',
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}
+            >
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, fontWeight: 600 }}>
+                {campaign.title}
+              </span>
+              <span style={{ flex: '0 0 auto', color: '#64748b', fontSize: 11 }}>View details →</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+    </section>
   );
 }
 
@@ -155,6 +256,52 @@ function CandidateUploadAction({ action }: ChatActionRendererProps) {
           upload
         />
       )}
+    </div>
+  );
+}
+
+function CampaignCreateAction({ action }: ChatActionRendererProps) {
+  const [launch, setLaunch] = useState<{ campaignId: string; title: string; batchId: string } | null>(null);
+
+  if (launch) {
+    const progressUrl = `/hiring/${encodeURIComponent(launch.campaignId)}/screening?batch_id=${encodeURIComponent(launch.batchId)}`;
+    return (
+      <section style={panelStyle}>
+        <strong style={{ color: '#0f172a', fontSize: 14 }}>Screening started</strong>
+        <ActionMessage>
+          “{launch.title}” was created and screening has been queued. You can follow progress here.
+        </ActionMessage>
+        <BatchStatusAction
+          action={{
+            type: 'SHOW_BATCH_STATUS',
+            payload: {
+              campaign_id: launch.campaignId,
+              batch_id: launch.batchId,
+              batch_type: 'screening',
+            },
+          }}
+        />
+        <a href={progressUrl} style={{ display: 'inline-block', marginTop: 12, fontSize: 13 }}>
+          Open full screening progress
+        </a>
+      </section>
+    );
+  }
+
+  return (
+    <div className="chat-existing-page" style={{
+      marginTop: 12,
+      maxHeight: 'min(72vh, 760px)',
+      overflow: 'auto',
+      border: '1px solid #e2e8f0',
+      borderRadius: 12,
+      background: '#fff',
+    }}>
+      <CreateHiring
+        initialTitle={stringValue(action.payload.initial_title)}
+        embeddedMode="campaign-create"
+        onScreeningStarted={setLaunch}
+      />
     </div>
   );
 }
@@ -266,12 +413,13 @@ export function ChatActionRenderer(props: ChatActionRendererProps) {
     case 'SHOW_CAMPAIGN_LIST':
     case 'SHOW_CAMPAIGN_PICKER':
     case 'SHOW_CAMPAIGN_DETAIL':
-    case 'SHOW_CAMPAIGN_CREATE_FORM':
     case 'SHOW_CANDIDATE_LIST':
     case 'SHOW_SCREENING_RESULTS':
     case 'SHOW_CANDIDATE_SCREENING_RESULT':
     case 'SHOW_SCREENING_STATUS':
       return <ExistingPageAction {...props} />;
+    case 'SHOW_CAMPAIGN_CREATE_FORM':
+      return <CampaignCreateAction {...props} />;
     case 'SHOW_CANDIDATE_UPLOAD':
       return <CandidateUploadAction {...props} />;
     case 'SHOW_BATCH_STATUS':

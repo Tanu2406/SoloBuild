@@ -49,9 +49,10 @@ const SECTIONS = [
 
 interface CreateHiringProps {
   embeddedCampaignId?: string;
-  embeddedMode?: 'candidate-upload';
+  embeddedMode?: 'candidate-upload' | 'campaign-create';
   initialTitle?: string;
   onCandidateUploadComplete?: (batchId: string) => void;
+  onScreeningStarted?: (launch: { campaignId: string; title: string; batchId: string }) => void;
 }
 
 const CreateHiring: React.FC<CreateHiringProps> = ({
@@ -59,6 +60,7 @@ const CreateHiring: React.FC<CreateHiringProps> = ({
   embeddedMode,
   initialTitle,
   onCandidateUploadComplete,
+  onScreeningStarted,
 }) => {
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -120,6 +122,7 @@ const CreateHiring: React.FC<CreateHiringProps> = ({
   const [selectedRecruiter, setSelectedRecruiter] = useState<AIRecruiter | null>(null);
   const [instructions, setInstructions] = useState('');
   const isEmbeddedCandidateUpload = embeddedMode === 'candidate-upload';
+  const isEmbeddedCampaignCreate = embeddedMode === 'campaign-create';
 
   const validCandidates = parsedCandidates.filter(c => c._valid);
   const totalResumes = resumeFiles.length;
@@ -473,7 +476,15 @@ const CreateHiring: React.FC<CreateHiringProps> = ({
           timestamp: now, timeAgo: 'just now',
         },
       });
-      navigate(`/hiring/${hiringId}/screening?resumes=${totalResumes}&batch_id=${encodeURIComponent(screeningBatch.batch_id)}`);
+      if (onScreeningStarted) {
+        onScreeningStarted({
+          campaignId: hiringId,
+          title: form.title.trim(),
+          batchId: screeningBatch.batch_id,
+        });
+      } else {
+        navigate(`/hiring/${hiringId}/screening?resumes=${totalResumes}&batch_id=${encodeURIComponent(screeningBatch.batch_id)}`);
+      }
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to start candidate screening', 'error');
     } finally {
@@ -492,9 +503,9 @@ const CreateHiring: React.FC<CreateHiringProps> = ({
   };
 
   return (
-    <div className={`ch-page${isEmbeddedCandidateUpload ? ' ch-page--chat-upload' : ''}`}>
+    <div className={`ch-page${isEmbeddedCandidateUpload ? ' ch-page--chat-upload' : ''}${isEmbeddedCampaignCreate ? ' ch-page--chat-create' : ''}`}>
       {/* ══ LEFT: sticky sidebar nav ══ */}
-      {!isEmbeddedCandidateUpload && <aside className="ch-sidenav">
+      {!isEmbeddedCandidateUpload && !isEmbeddedCampaignCreate && <aside className="ch-sidenav">
         <button className="ch-sidenav__back" onClick={() => navigate('/hiring')}>
           <ArrowLeft size={15} /> Back to Hiring
         </button>
@@ -1059,13 +1070,28 @@ function injectStyles() {
   height: auto;
 }
 
+.ch-page--chat-create {
+  display: block;
+  min-height: 0;
+  height: auto;
+}
+
 .ch-page--chat-upload .ch-body {
+  overflow: visible;
+}
+
+.ch-page--chat-create .ch-body {
   overflow: visible;
 }
 
 .ch-page--chat-upload .ch-form {
   max-width: none;
   padding: 4px 0 0;
+}
+
+.ch-page--chat-create .ch-form {
+  max-width: none;
+  padding: 24px 28px 0;
 }
 
 .ch-page--chat-upload .ch-section:not(#ch-section-resumes),
