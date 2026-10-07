@@ -15,7 +15,7 @@ import { useAppStore, useRecruiters } from '../store/appStore';
 import { parseFile } from '../services/importService';
 import { fetchSheetPreview, isValidSheetsUrl } from '../services/googleSheetsService';
 import {
-  createCampaign, updateCampaign, uploadCandidateFiles,
+  createCampaign, listCampaigns, updateCampaign, uploadCandidateFiles,
   screenCandidates,
 } from '../services/campaignService';
 import { listAgents, LANG_ARRAY_FROM_API } from '../services/agentService';
@@ -47,7 +47,19 @@ const SECTIONS = [
   { id: 'launch',     label: 'Launch' },
 ];
 
-const CreateHiring: React.FC = () => {
+interface CreateHiringProps {
+  embeddedCampaignId?: string;
+  embeddedMode?: 'candidate-upload';
+  initialTitle?: string;
+  onCandidateUploadComplete?: (batchId: string) => void;
+}
+
+const CreateHiring: React.FC<CreateHiringProps> = ({
+  embeddedCampaignId,
+  embeddedMode,
+  initialTitle,
+  onCandidateUploadComplete,
+}) => {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { dispatch } = useAppStore();
@@ -59,7 +71,7 @@ const CreateHiring: React.FC = () => {
 
   // ——— Job details ———
   const [form, setForm] = useState<CreateHiringForm>({
-    title: '', location: '', employmentType: 'full_time', description: '',
+    title: initialTitle ?? '', location: '', employmentType: 'full_time', description: '',
   });
   const [formErrors, setFormErrors] = useState<Partial<CreateHiringForm>>({});
 
@@ -88,11 +100,11 @@ const CreateHiring: React.FC = () => {
   const [parseError, setParseError] = useState('');
 
   // ——— Campaign state (created as soon as JD is provided) ———
-  const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [campaignId, setCampaignId] = useState<string | null>(embeddedCampaignId ?? null);
   const [campaignSaving, setCampaignSaving] = useState(false);
   const [campaignUpdating, setCampaignUpdating] = useState(false);
   const [launching, setLaunching] = useState(false);
-  const campaignIdRef = React.useRef<string | null>(null); // stable ref for callbacks
+  const campaignIdRef = React.useRef<string | null>(embeddedCampaignId ?? null); // stable ref for callbacks
   const assignedAgentIdRef = React.useRef<string | null>(null);
   
   const candidateFileRef = useRef<HTMLInputElement>(null);
@@ -107,12 +119,14 @@ const CreateHiring: React.FC = () => {
   const [agentsError, setAgentsError] = useState('');
   const [selectedRecruiter, setSelectedRecruiter] = useState<AIRecruiter | null>(null);
   const [instructions, setInstructions] = useState('');
+  const isEmbeddedCandidateUpload = embeddedMode === 'candidate-upload';
 
   const validCandidates = parsedCandidates.filter(c => c._valid);
   const totalResumes = resumeFiles.length;
 
   // ——— Fetch agents from backend on mount ———
   useEffect(() => {
+    if (isEmbeddedCandidateUpload) return;
     setAgentsLoading(true);
     setAgentsError('');
     listAgents()
@@ -146,7 +160,26 @@ const CreateHiring: React.FC = () => {
       })
       .finally(() => setAgentsLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isEmbeddedCandidateUpload]);
+
+  useEffect(() => {
+    if (!embeddedCampaignId) return;
+    let cancelled = false;
+    listCampaigns()
+      .then(campaigns => {
+        const campaign = campaigns.find(item => item.id === embeddedCampaignId);
+        if (!campaign) throw new Error('The selected campaign could not be found.');
+        if (!cancelled) {
+          setForm(current => ({ ...current, title: campaign.title }));
+        }
+      })
+      .catch(error => {
+        if (!cancelled) {
+          showToast(error instanceof Error ? error.message : 'Campaign details could not be loaded.', 'error');
+        }
+      });
+    return () => { cancelled = true; };
+  }, [embeddedCampaignId, showToast]);
 
   // ——— Intersection observer for active section ———
   useEffect(() => {
@@ -249,8 +282,9 @@ const CreateHiring: React.FC = () => {
     // Upload to existing campaign immediately if available
     if (campaignIdRef.current) {
       try {
-        await uploadCandidateFiles(campaignIdRef.current, files);
+        const batch = await uploadCandidateFiles(campaignIdRef.current, files);
         files.forEach(file => uploadedResumeFilesRef.current.add(file));
+        onCandidateUploadComplete?.(batch.batch_id);
         showToast(`${files.length} resume${files.length > 1 ? 's' : ''} uploaded`, 'success');
       } catch (err: any) {
         showToast(err.message || 'Resume upload failed', 'error');
@@ -458,9 +492,9 @@ const CreateHiring: React.FC = () => {
   };
 
   return (
-    <div className="ch-page">
+    <div className={`ch-page${isEmbeddedCandidateUpload ? ' ch-page--chat-upload' : ''}`}>
       {/* ══ LEFT: sticky sidebar nav ══ */}
-      <aside className="ch-sidenav">
+      {!isEmbeddedCandidateUpload && <aside className="ch-sidenav">
         <button className="ch-sidenav__back" onClick={() => navigate('/hiring')}>
           <ArrowLeft size={15} /> Back to Hiring
         </button>
@@ -492,7 +526,7 @@ const CreateHiring: React.FC = () => {
           {totalResumes > 0 && <p className="ch-sidenav__summary-item"><strong>Resumes:</strong> {totalResumes}</p>}
           {selectedRecruiter && <p className="ch-sidenav__summary-item"><strong>AI:</strong> {selectedRecruiter.name}</p>}
         </div>
-      </aside>
+      </aside>}
 
       {/* ══ RIGHT: scrollable form body ══ */}
       <div className="ch-body" ref={scrollRef}>
@@ -643,8 +677,14 @@ const CreateHiring: React.FC = () => {
             <div className="ch-section__header">
               <div className="ch-section__num">3</div>
               <div>
-                <h2 className="ch-section__title">Resume Source</h2>
-                <p className="ch-section__sub">Provide candidate resumes for AI screening. Upload small batches directly or connect Google Drive for larger collections.</p>
+                <h2 className="ch-section__title">
+                  {isEmbeddedCandidateUpload ? `Upload candidates${form.title ? ` for ${form.title}` : ''}` : 'Resume Source'}
+                </h2>
+                <p className="ch-section__sub">
+                  {isEmbeddedCandidateUpload
+                    ? 'Choose candidate resume files to upload to this campaign.'
+                    : 'Provide candidate resumes for AI screening. Upload small batches directly or connect Google Drive for larger collections.'}
+                </p>
               </div>
             </div>
             <div className="ch-section__body">
@@ -653,21 +693,32 @@ const CreateHiring: React.FC = () => {
                 <button
                   className={`ch-toggle-btn ${resumeMode === 'upload' ? 'ch-toggle-btn--active' : ''}`}
                   onClick={() => resumeFileRef.current?.click()}
+                  disabled={resumeUploading || (isEmbeddedCandidateUpload && !campaignIdRef.current)}
                 >
                   <Upload size={15} />
-                  Upload resumes <span style={{ fontSize: '10px', opacity: 0.7 }}>(≤ 20 files)</span>
+                  {isEmbeddedCandidateUpload ? 'Upload candidate files' : 'Upload resumes'}
+                  {!isEmbeddedCandidateUpload && <span style={{ fontSize: '10px', opacity: 0.7 }}>(≤ 20 files)</span>}
                 </button>
-                <button
-                  className={`ch-toggle-btn ${resumeMode === 'drive' ? 'ch-toggle-btn--active' : ''}`}
-                  onClick={handleConnectDrive}
-                  disabled={driveConnecting}
-                >
-                  {driveConnecting ? <Loader2 size={15} className="spin" /> : <HardDrive size={15} />}
-                  {driveConnecting ? 'Connecting…' : 'Import from Google Drive'}
-                </button>
+                {!isEmbeddedCandidateUpload && (
+                  <button
+                    className={`ch-toggle-btn ${resumeMode === 'drive' ? 'ch-toggle-btn--active' : ''}`}
+                    onClick={handleConnectDrive}
+                    disabled={driveConnecting}
+                  >
+                    {driveConnecting ? <Loader2 size={15} className="spin" /> : <HardDrive size={15} />}
+                    {driveConnecting ? 'Connecting…' : 'Import from Google Drive'}
+                  </button>
+                )}
               </div>
 
-              <input ref={resumeFileRef} type="file" accept=".pdf,.docx,.doc" multiple style={{ display: 'none' }} onChange={handleResumeFilesChange} />
+              <input
+                ref={resumeFileRef}
+                type="file"
+                accept={isEmbeddedCandidateUpload ? '.pdf,.docx,.doc,.txt,.zip,.csv' : '.pdf,.docx,.doc'}
+                multiple
+                style={{ display: 'none' }}
+                onChange={handleResumeFilesChange}
+              />
 
               {resumeUploading && (
                 <div className="ch-status-pill" style={{ background: 'var(--brand-primary-light)', color: 'var(--brand-primary)', border: '1px solid var(--brand-primary-border)' }}>
@@ -955,7 +1006,7 @@ const CreateHiring: React.FC = () => {
           </section>
 
           {/* bottom spacer */}
-          <div style={{ height: '60px' }} />
+          <div className="ch-bottom-spacer" style={{ height: '60px' }} />
         </div>
       </div>
 
@@ -1001,6 +1052,37 @@ function injectStyles() {
   display: flex;
   min-height: 100vh;
   background: var(--bg-app);
+}
+
+.ch-page--chat-upload {
+  min-height: 0;
+  height: auto;
+}
+
+.ch-page--chat-upload .ch-body {
+  overflow: visible;
+}
+
+.ch-page--chat-upload .ch-form {
+  max-width: none;
+  padding: 4px 0 0;
+}
+
+.ch-page--chat-upload .ch-section:not(#ch-section-resumes),
+.ch-page--chat-upload .ch-divider {
+  display: none;
+}
+
+.ch-page--chat-upload .ch-bottom-spacer {
+  display: none;
+}
+
+.ch-page--chat-upload #ch-section-resumes .ch-section__num {
+  display: none;
+}
+
+.ch-page--chat-upload #ch-section-resumes .ch-section__body {
+  padding-left: 0;
 }
 
 /* ── Left sticky sidebar ── */

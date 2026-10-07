@@ -19,7 +19,9 @@ export type UIActionType =
   | 'SHOW_CANDIDATE_UPLOAD'
   | 'SHOW_SCREENING_STATUS'
   | 'SHOW_BATCH_STATUS'
-  | 'SHOW_CAMPAIGN_PICKER';
+  | 'SHOW_CAMPAIGN_PICKER'
+  | 'SHOW_SCREENING_RESULTS'
+  | 'SHOW_CANDIDATE_SCREENING_RESULT';
 
 export interface UIAction {
   type: UIActionType;
