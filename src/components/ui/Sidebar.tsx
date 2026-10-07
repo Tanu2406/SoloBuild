@@ -30,7 +30,6 @@ interface RecentChatSummary {
   id: string;
   title: string;
   updatedAt: number;
-  isDemo?: boolean;
 }
 
 interface SidebarProps {
@@ -336,16 +335,8 @@ const solutionSubmenus: Record<string, { routePrefix: string; items: { id: strin
   },
 };
 
-const demoRecentChats: RecentChatSummary[] = [
-  { id: 'demo-candidate-screening', title: 'Candidate screening help', updatedAt: 3, isDemo: true },
-  { id: 'demo-hiring-pipeline', title: 'Hiring pipeline update', updatedAt: 2, isDemo: true },
-  { id: 'demo-interview-scheduling', title: 'Interview scheduling', updatedAt: 1, isDemo: true },
-  { id: 'demo-resume-review', title: 'Resume review', updatedAt: 0, isDemo: true },
-  { id: 'demo-candidate-followup', title: 'Candidate follow-up', updatedAt: -1, isDemo: true },
-];
-
-function relativeTime(timestamp: number, isDemo = false) {
-  if (isDemo) return 'Sample';
+function relativeTime(timestamp: number) {
+  if (!timestamp) return '';
   const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
   if (minutes < 1) return 'now';
   if (minutes < 60) return `${minutes}m ago`;
@@ -387,9 +378,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ['interested', 'connected', 'shortlisted'].includes(candidate.status) &&
     !['interview_scheduled', 'interview_completed', 'hired'].includes(candidate.status)
   ).length;
-  const recentChatIds = new Set(recentChats.map((chat) => chat.id));
-  const chats = [...recentChats, ...demoRecentChats.filter((chat) => !recentChatIds.has(chat.id))];
-  const visibleChats = recentExpanded ? chats : chats.slice(0, 3);
+  const visibleChats = recentExpanded ? recentChats : recentChats.slice(0, 3);
   const routeContextId = pathname.startsWith('/hiring') ||
     ['/candidates', '/screening-reports', '/recruiters', '/interviews', '/activity'].some((path) => pathname.startsWith(path))
     ? 'talent-acquisition'
@@ -496,7 +485,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   key={chat.id}
                   type="button"
-                  className={`sidebar__recent-chat${selectedChatId === chat.id ? ' sidebar__recent-chat--active' : ''}${chat.isDemo ? ' sidebar__recent-chat--demo' : ''}`}
+                  className={`sidebar__recent-chat${selectedChatId === chat.id ? ' sidebar__recent-chat--active' : ''}`}
                   title={chat.title}
                   onClick={() => {
                     onSelectChat(chat.id);
@@ -506,11 +495,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span className="sidebar__recent-title">{chat.title}</span>
                   <span className="sidebar__recent-meta">
                     <MessageSquare size={12} />
-                    <span>{chat.isDemo ? 'Talent Acquisition' : 'Chat'}</span>
-                    <span>{relativeTime(chat.updatedAt, chat.isDemo)}</span>
+                    <span>Chat</span>
+                    <span>{relativeTime(chat.updatedAt)}</span>
                   </span>
                 </button>
               ))}
+              {recentChats.length === 0 && (
+                <span style={{ padding: '8px 10px', color: '#94a3b8', fontSize: 11 }}>No conversations yet</span>
+              )}
             </div>
           </section>
 
