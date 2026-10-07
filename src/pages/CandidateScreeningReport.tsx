@@ -11,7 +11,7 @@
 // Schedule Interview: reuses existing ScheduleInterviewModal.
 // ============================================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Download, Calendar, CheckCircle2,
@@ -27,7 +27,15 @@ import { CapabilityMap } from '../components/product/CapabilityMap';
 import { SkillsBreakdown } from '../components/product/SkillsBreakdown';
 import { DimensionScorecard } from '../components/product/DimensionScorecard';
 import { ScheduleInterviewModal } from '../components/product/ScheduleInterviewModal';
-import { useCandidate } from '../store/appStore';
+import { useAppStore, useCandidate, useHiring } from '../store/appStore';
+import {
+  applyDocumentScreening,
+  getCandidateDocumentScreening,
+  listCampaignCandidates,
+  listCampaignDocumentScreenings,
+  listCampaigns,
+  mapCampaignCandidate,
+} from '../services/campaignService';
 import { screeningReportService } from '../services/screeningReportService';
 import { useToast } from '../components/ui/Toast';
 import type { AIHireLabel } from '../types';
@@ -155,10 +163,128 @@ const CandidateScreeningReport: React.FC = () => {
   const { candidateId, hiringId } = useParams<{ candidateId: string; hiringId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { dispatch } = useAppStore();
 
-  const candidate = useCandidate(candidateId ?? '');
+  const storedCandidate = useCandidate(candidateId ?? '');
+  const storedHiring = useHiring(hiringId ?? '');
+  const storedCandidateRef = useRef(storedCandidate);
+  const storedHiringRef = useRef(storedHiring);
+  useEffect(() => {
+    storedCandidateRef.current = storedCandidate;
+    storedHiringRef.current = storedHiring;
+  }, [storedCandidate, storedHiring]);
+  const [loadedCandidate, setLoadedCandidate] = useState<typeof storedCandidate>();
+  const candidate = loadedCandidate ?? (
+    storedCandidate?.hiringId === hiringId ? storedCandidate : undefined
+  );
   const [activeTab, setActiveTab] = useState<ReportTab>('overview');
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [screeningRefreshError, setScreeningRefreshError] = useState('');
+  const [loadedReportKey, setLoadedReportKey] = useState('');
+  const reportKey = `${hiringId ?? ''}/${candidateId ?? ''}`;
+  const reportLoading = Boolean(hiringId && candidateId && loadedReportKey !== reportKey);
+  const reportError = loadedReportKey === reportKey ? screeningRefreshError : '';
+
+  useEffect(() => {
+    if (!hiringId || !candidateId) return;
+    let cancelled = false;
+    const loadReport = async () => {
+      const [candidateResult, screeningResult, campaignsResult] = await Promise.allSettled([
+        listCampaignCandidates(hiringId),
+        getCandidateDocumentScreening(hiringId, candidateId),
+        listCampaigns(),
+      ]);
+      if (cancelled) return;
+
+      const campaignCandidate = candidateResult.status === 'fulfilled'
+        ? candidateResult.value.find(item => item.id === candidateId && item.campaign_id === hiringId)
+        : undefined;
+      const currentStoredCandidate = storedCandidateRef.current;
+      const existingCandidate = candidateResult.status === 'rejected' &&
+        currentStoredCandidate?.hiringId === hiringId ? currentStoredCandidate : undefined;
+      const campaign = campaignsResult.status === 'fulfilled'
+        ? campaignsResult.value.find(item => item.id === hiringId)
+        : undefined;
+      let mappedCandidate = campaignCandidate
+        ? mapCampaignCandidate(campaignCandidate, undefined, campaign?.title ?? storedHiringRef.current?.title ?? '')
+        : existingCandidate;
+      const errors: string[] = [];
+
+      if (candidateResult.status === 'rejected') {
+        errors.push(candidateResult.reason instanceof Error
+          ? `Candidate data could not be loaded: ${candidateResult.reason.message}`
+          : 'Candidate data could not be loaded.');
+      } else if (!campaignCandidate) {
+        errors.push('The requested candidate was not found in this campaign.');
+      }
+      if (campaignsResult.status === 'rejected') {
+        errors.push(campaignsResult.reason instanceof Error
+          ? `Campaign details could not be loaded: ${campaignsResult.reason.message}`
+          : 'Campaign details could not be loaded.');
+      } else if (!campaign) {
+        errors.push('Campaign details for this candidate were not found.');
+      }
+
+      let screening;
+      if (screeningResult.status === 'fulfilled') {
+        screening = screeningResult.value.find(item =>
+          item.candidate_id === candidateId && item.campaign_id === hiringId,
+        );
+      } else {
+        const fallbackResult = await Promise.allSettled([
+          listCampaignDocumentScreenings(hiringId),
+        ]);
+        if (cancelled) return;
+        const fallback = fallbackResult[0];
+        if (fallback.status === 'fulfilled') {
+          screening = fallback.value.find(item =>
+            item.candidate_id === candidateId && item.campaign_id === hiringId,
+          );
+        }
+        if (fallback.status === 'rejected') {
+          errors.push(fallback.reason instanceof Error
+            ? `Campaign screening results could not be loaded: ${fallback.reason.message}`
+            : 'Campaign screening results could not be loaded.');
+        }
+      }
+
+      if (mappedCandidate && screening) {
+        mappedCandidate = applyDocumentScreening(mappedCandidate, screening);
+      } else if (mappedCandidate) {
+        mappedCandidate = {
+          ...mappedCandidate,
+          matchScore: undefined,
+          compatibility: undefined,
+          strongMatches: undefined,
+          missingRequirements: undefined,
+          aiRecommendation: undefined,
+          aiSummary: undefined,
+          documentScreeningId: undefined,
+          documentScreeningSummary: undefined,
+          documentScreeningCreatedAt: undefined,
+          documentScreeningUpdatedAt: undefined,
+        };
+      }
+      if (mappedCandidate) {
+        setLoadedCandidate(mappedCandidate);
+        dispatch({
+          type: 'ADD_CANDIDATES',
+          payload: { hiringId, candidates: [mappedCandidate] },
+        });
+      }
+      setScreeningRefreshError(errors.join(' '));
+      setLoadedReportKey(reportKey);
+    };
+
+    void loadReport().catch(error => {
+      if (cancelled) return;
+      setScreeningRefreshError(error instanceof Error
+        ? error.message
+        : 'Failed to load candidate screening data.');
+      setLoadedReportKey(reportKey);
+    });
+    return () => { cancelled = true; };
+  }, [hiringId, candidateId, dispatch, reportKey]);
 
   // Inject print CSS once
   React.useEffect(() => { injectPrintStyles(); }, []);
@@ -169,19 +295,28 @@ const CandidateScreeningReport: React.FC = () => {
     setTimeout(() => window.print(), 300);
   }, [showToast]);
 
+  if (!candidate && reportLoading) {
+    return (
+      <div className="page-content" role="status" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Clock size={15} /> Loading candidate and screening data…
+      </div>
+    );
+  }
+
   if (!candidate) {
     return (
       <div className="page-content">
         <EmptyState
           title="Report not found"
-          description="This candidate report does not exist or the candidate has been removed."
+          description={reportError || 'This candidate report does not exist or the candidate has been removed.'}
           action={{ label: 'Back to Screening Reports', onClick: () => navigate('/screening-reports') }}
         />
       </div>
     );
   }
 
-  const report = screeningReportService.getReport(candidate);
+  const isBackendCampaign = !!hiringId;
+  const report = screeningReportService.getReport(candidate, isBackendCampaign);
   const callComplete = report.callAssessment.complete;
   const hasResume = screeningReportService.isReportAvailable(candidate);
   const { resumeScreening, callAssessment, capabilityAnalysis, overallRecommendation } = report;
@@ -202,25 +337,49 @@ const CandidateScreeningReport: React.FC = () => {
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'resume', label: 'Resume Screening' },
-    { id: 'call', label: `AI Call Assessment${callComplete ? '' : ' ·  Pending'}` },
-    { id: 'capability', label: 'Capability Analysis' },
+    { id: 'call', label: isBackendCampaign
+      ? 'AI Call Assessment · Unavailable'
+      : `AI Call Assessment${callComplete ? '' : ' ·  Pending'}` },
+    ...(!isBackendCampaign && !candidate.documentScreeningId
+      ? [{ id: 'capability', label: 'Capability Analysis' }]
+      : []),
     { id: 'evidence', label: 'Evidence' },
   ];
 
   // ─── Score bar for resume match ─────────────────────────
   const matchPct = resumeScreening.matchScore;
-  const matchColor = matchPct >= 80
+  const matchColor = matchPct === null
+    ? 'var(--text-secondary)'
+    : matchPct >= 80
     ? 'var(--status-success-text)'
     : matchPct >= 60 ? 'var(--brand-primary)' : 'var(--status-error-text)';
-  const matchBg = matchPct >= 80
+  const matchBg = matchPct === null
+    ? 'var(--bg-subtle)'
+    : matchPct >= 80
     ? 'var(--status-success-bg)'
     : matchPct >= 60 ? 'var(--brand-primary-light)' : 'var(--status-error-bg)';
-  const matchBorder = matchPct >= 80
+  const matchBorder = matchPct === null
+    ? 'var(--border-default)'
+    : matchPct >= 80
     ? 'var(--status-success-border)'
     : matchPct >= 60 ? 'var(--brand-primary-border)' : 'var(--status-error-border)';
 
   return (
     <div className="page-content animate-fade-in" style={{ maxWidth: '900px' }}>
+      {(reportError || reportLoading) && (
+        <div role={reportLoading ? 'status' : 'alert'} style={{
+          display: 'flex', alignItems: 'flex-start', gap: '8px',
+          padding: '12px 14px', marginBottom: '14px',
+          background: 'var(--status-warning-bg)', border: '1px solid var(--status-warning-border)',
+          borderRadius: 'var(--radius-md)', color: 'var(--status-warning-text)',
+          fontSize: 'var(--font-size-sm)',
+        }}>
+          {reportLoading ? <Clock size={15} /> : <AlertTriangle size={15} />}
+          <span>{reportLoading
+            ? 'Refreshing candidate and document-screening data…'
+            : `Could not load campaign report data: ${reportError}`}</span>
+        </div>
+      )}
 
       {/* ── Back nav ── */}
       <button
@@ -247,7 +406,17 @@ const CandidateScreeningReport: React.FC = () => {
                 <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, color: 'var(--text-primary)' }}>
                   {candidate.name}
                 </h1>
-                <CandidateStatusBadge status={candidate.status} />
+                {isBackendCampaign ? (
+                  candidate.workflowStep || candidate.workflowStepStatus ? (
+                    <span style={{
+                      padding: '3px 10px', borderRadius: 'var(--radius-full)',
+                      background: 'var(--bg-subtle)', border: '1px solid var(--border-default)',
+                      color: 'var(--text-secondary)', fontSize: 'var(--font-size-xs)', fontWeight: 600,
+                    }}>
+                      {[candidate.workflowStep, candidate.workflowStepStatus].filter(Boolean).join(' · ')}
+                    </span>
+                  ) : null
+                ) : <CandidateStatusBadge status={candidate.status} />}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', marginTop: '5px', flexWrap: 'wrap' }}>
                 {candidate.hiringTitle && (
@@ -289,9 +458,11 @@ const CandidateScreeningReport: React.FC = () => {
                 />
                 <AssessmentStatusPill
                   complete={callComplete}
-                  label={callComplete ? 'Call Assessment Complete' : 'Call Pending'}
+                  label={callComplete
+                    ? 'Call Assessment Complete'
+                    : isBackendCampaign ? 'Call Assessment Unavailable' : 'Call Pending'}
                 />
-                {callComplete && (
+                {!isBackendCampaign && callComplete && (
                   <AssessmentStatusPill complete label="Assessment Ready" />
                 )}
               </div>
@@ -329,7 +500,9 @@ const CandidateScreeningReport: React.FC = () => {
             </Button>
             {!canSchedule && !alreadyScheduled && (
               <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)', textAlign: 'right', maxWidth: '200px' }}>
-                Available after AI call assessment is complete
+                {isBackendCampaign
+                  ? 'Call-assessment data is not available from the campaign APIs.'
+                  : 'Available after AI call assessment is complete'}
               </p>
             )}
           </div>
@@ -457,11 +630,12 @@ const CandidateScreeningReport: React.FC = () => {
               <AlertTriangle size={16} style={{ color: 'var(--status-warning-text)', flexShrink: 0, marginTop: '2px' }} />
               <div>
                 <p style={{ fontSize: 'var(--font-size-md)', fontWeight: 700, color: 'var(--status-warning-text)' }}>
-                  AI Call Assessment Pending
+                  {isBackendCampaign ? 'Call Assessment Unavailable' : 'AI Call Assessment Pending'}
                 </p>
                 <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: 1.55 }}>
-                  The overall AI recommendation and interview scheduling will be available after the candidate completes the AI voice screening call.
-                  Resume screening is complete and shown below.
+                  {isBackendCampaign
+                    ? 'The campaign screening APIs do not provide call-assessment or interview recommendation data.'
+                    : 'The overall AI recommendation and interview scheduling will be available after the candidate completes the AI voice screening call. Resume screening is complete and shown below.'}
                 </p>
               </div>
             </div>
@@ -485,7 +659,7 @@ const CandidateScreeningReport: React.FC = () => {
                 border: `1px solid ${matchBorder}`, borderRadius: 'var(--radius-md)',
                 marginBottom: '12px',
               }}>
-                <span style={{ fontSize: 'var(--font-size-xl)', fontWeight: 800, color: matchColor }}>{matchPct}%</span>
+                <span style={{ fontSize: 'var(--font-size-xl)', fontWeight: 800, color: matchColor }}>{matchPct === null ? 'Not Scored' : `${matchPct}%`}</span>
                 <div>
                   <p style={{ fontSize: 'var(--font-size-sm)', fontWeight: 700, color: matchColor }}>{resumeScreening.resumeLabel}</p>
                   <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)' }}>JD compatibility score</p>
@@ -593,10 +767,12 @@ const CandidateScreeningReport: React.FC = () => {
                 }}>
                   <Clock size={22} style={{ color: 'var(--text-muted)' }} />
                   <p style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'center' }}>
-                    Call not yet completed
+                    {isBackendCampaign ? 'Call assessment data unavailable' : 'Call not yet completed'}
                   </p>
                   <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)', textAlign: 'center' }}>
-                    Assessment data will appear here once the AI screening call is done.
+                    {isBackendCampaign
+                      ? 'No call-assessment endpoint data is available for this campaign.'
+                      : 'Assessment data will appear here once the AI screening call is done.'}
                   </p>
                 </div>
               )}
@@ -604,7 +780,7 @@ const CandidateScreeningReport: React.FC = () => {
           </div>
 
           {/* Capability map compact preview */}
-          {capabilityAnalysis.competencies.length > 0 && (
+          {!candidate.documentScreeningId && capabilityAnalysis.competencies.length > 0 && (
             <SectionCard
               title="Capability Overview"
               subtitle="Top competencies evaluated against role requirements"
@@ -649,7 +825,7 @@ const CandidateScreeningReport: React.FC = () => {
                 border: `1px solid ${matchBorder}`, borderRadius: 'var(--radius-md)', flex: 1,
               }}>
                 <span style={{ fontSize: 'var(--font-size-4xl)', fontWeight: 800, color: matchColor }}>
-                  {matchPct}%
+                  {matchPct === null ? 'Not Scored' : `${matchPct}%`}
                 </span>
                 <div>
                   <p style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: matchColor }}>
@@ -667,9 +843,17 @@ const CandidateScreeningReport: React.FC = () => {
                 <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: '3px' }}>
                   EVIDENCE SOURCE
                 </p>
-                <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)', fontWeight: 600 }}>
-                  Resume / CV
-                </p>
+                {candidate.resumeUrl ? (
+                  <a href={candidate.resumeUrl} target="_blank" rel="noreferrer" style={{
+                    fontSize: 'var(--font-size-sm)', color: 'var(--brand-primary)', fontWeight: 600,
+                  }}>
+                    Open source resume
+                  </a>
+                ) : (
+                  <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)', fontWeight: 600 }}>
+                    Resume / CV
+                  </p>
+                )}
                 <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>
                   Not conversation evidence
                 </p>
@@ -685,7 +869,9 @@ const CandidateScreeningReport: React.FC = () => {
                 AI Analysis
               </p>
               <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)', lineHeight: 1.7 }}>
-                {resumeScreening.resumeSummary}
+                {resumeScreening.resumeSummary || (isBackendCampaign
+                  ? 'No summary was returned by the document-screening endpoint.'
+                  : resumeScreening.resumeSummary)}
               </p>
             </div>
           </SectionCard>
@@ -700,9 +886,9 @@ const CandidateScreeningReport: React.FC = () => {
                 <p style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--status-success-text)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
                   ✓ Confirmed Matches
                 </p>
-                {resumeScreening.strongMatches.length === 0 ? (
+                {resumeScreening.strongMatches.length === 0 && !isBackendCampaign ? (
                   <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-tertiary)' }}>No strong matches identified.</p>
-                ) : (
+                ) : resumeScreening.strongMatches.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {resumeScreening.strongMatches.map(m => (
                       <div key={m} style={{
@@ -715,17 +901,17 @@ const CandidateScreeningReport: React.FC = () => {
                       </div>
                     ))}
                   </div>
-                )}
+                ) : null}
               </div>
               <div>
                 <p style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--status-warning-text)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '10px' }}>
                   ~ Potential Gaps
                 </p>
-                {resumeScreening.missingRequirements.length === 0 ? (
+                {resumeScreening.missingRequirements.length === 0 && !isBackendCampaign ? (
                   <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--status-success-text)', fontWeight: 600 }}>
                     ✓ No gaps identified
                   </p>
-                ) : (
+                ) : resumeScreening.missingRequirements.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {resumeScreening.missingRequirements.map(m => (
                       <div key={m} style={{
@@ -738,7 +924,7 @@ const CandidateScreeningReport: React.FC = () => {
                       </div>
                     ))}
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           </SectionCard>
@@ -776,11 +962,12 @@ const CandidateScreeningReport: React.FC = () => {
             }}>
               <Clock size={32} style={{ color: 'var(--text-muted)' }} />
               <h3 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--text-primary)' }}>
-                Call Assessment Not Yet Available
+                {isBackendCampaign ? 'Call Assessment Unavailable' : 'Call Assessment Not Yet Available'}
               </h3>
               <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', maxWidth: '400px', lineHeight: 1.6 }}>
-                The AI call assessment will appear here after the candidate completes the AI voice screening call.
-                Resume screening data is already available in the Resume Screening tab.
+                {isBackendCampaign
+                  ? 'No call-assessment data is provided by the available campaign APIs.'
+                  : 'The AI call assessment will appear here after the candidate completes the AI voice screening call. Resume screening data is already available in the Resume Screening tab.'}
               </p>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '6px',
@@ -983,7 +1170,7 @@ const CandidateScreeningReport: React.FC = () => {
             </SectionCard>
           )}
 
-          {!callComplete && (
+          {!callComplete && !isBackendCampaign && (
             <div style={{
               padding: '20px', background: 'var(--bg-subtle)',
               border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)',
@@ -997,7 +1184,7 @@ const CandidateScreeningReport: React.FC = () => {
           )}
 
           {/* Disclaimer */}
-          <div style={{
+          {!isBackendCampaign && <div style={{
             padding: '12px 16px', background: 'var(--bg-subtle)',
             border: '1px solid var(--border-default)', borderRadius: 'var(--radius-sm)',
           }}>
@@ -1007,7 +1194,12 @@ const CandidateScreeningReport: React.FC = () => {
               Conversation evidence is directly observed during the AI voice screening and represents demonstrated knowledge, communication, and reasoning — not assumptions.
               These two sources are intentionally kept separate.
             </p>
-          </div>
+          </div>}
+          {isBackendCampaign && resumeScreening.evidence.length === 0 && (
+            <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)' }}>
+              The screening response contains no matched or unmatched field evidence.
+            </p>
+          )}
         </div>
       )}
 
@@ -1048,13 +1240,13 @@ const EvidenceCard: React.FC<{
           {label}
         </span>
       </div>
-      <p style={{
+      {detail && <p style={{
         fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)',
         lineHeight: 1.6,
         ...(isCall && detail.startsWith('"') ? { fontStyle: 'italic' } : {}),
       }}>
         {detail}
-      </p>
+      </p>}
     </div>
   );
 };

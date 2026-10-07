@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, FileText, FileSpreadsheet, Table2,
-  Check, ChevronRight, X, AlertCircle, Loader2,
+  Check, X, AlertCircle, Loader2,
   Upload, HardDrive, Sparkles, Play, Eye
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
@@ -14,6 +14,11 @@ import { useToast } from '../components/ui/Toast';
 import { useAppStore, useRecruiters } from '../store/appStore';
 import { parseFile } from '../services/importService';
 import { fetchSheetPreview, isValidSheetsUrl } from '../services/googleSheetsService';
+import {
+  createCampaign, listCampaigns, updateCampaign, uploadCandidateFiles,
+  screenCandidates,
+} from '../services/campaignService';
+import { listAgents, LANG_ARRAY_FROM_API } from '../services/agentService';
 import type { AIRecruiter, ParsedCandidate, CreateHiringForm, EmploymentType } from '../types';
 
 const employmentOptions = [
@@ -42,7 +47,21 @@ const SECTIONS = [
   { id: 'launch',     label: 'Launch' },
 ];
 
-const CreateHiring: React.FC = () => {
+interface CreateHiringProps {
+  embeddedCampaignId?: string;
+  embeddedMode?: 'candidate-upload' | 'campaign-create';
+  initialTitle?: string;
+  onCandidateUploadComplete?: (batchId: string) => void;
+  onScreeningStarted?: (launch: { campaignId: string; title: string; batchId: string }) => void;
+}
+
+const CreateHiring: React.FC<CreateHiringProps> = ({
+  embeddedCampaignId,
+  embeddedMode,
+  initialTitle,
+  onCandidateUploadComplete,
+  onScreeningStarted,
+}) => {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { dispatch } = useAppStore();
@@ -54,7 +73,7 @@ const CreateHiring: React.FC = () => {
 
   // ——— Job details ———
   const [form, setForm] = useState<CreateHiringForm>({
-    title: '', location: '', employmentType: 'full_time', description: '',
+    title: initialTitle ?? '', location: '', employmentType: 'full_time', description: '',
   });
   const [formErrors, setFormErrors] = useState<Partial<CreateHiringForm>>({});
 
@@ -62,12 +81,15 @@ const CreateHiring: React.FC = () => {
   const [jdMode, setJdMode] = useState<'paste' | 'upload' | null>(null);
   const [jdText, setJdText] = useState('');
   const [jdFileName, setJdFileName] = useState('');
+  const [jdFileObj, setJdFileObj] = useState<File | null>(null);
   const [jdUploading, setJdUploading] = useState(false);
   const jdFileRef = useRef<HTMLInputElement>(null);
 
   // ——— Resumes ———
   const [resumeMode, setResumeMode] = useState<'upload' | 'drive' | null>(null);
   const [resumeFiles, setResumeFiles] = useState<string[]>([]);
+  const [resumeFileObjs, setResumeFileObjs] = useState<File[]>([]);
+  const uploadedResumeFilesRef = useRef(new Set<File>());
   const [resumeUploading, setResumeUploading] = useState(false);
   const [driveConnecting, setDriveConnecting] = useState(false);
   const resumeFileRef = useRef<HTMLInputElement>(null);
@@ -78,6 +100,15 @@ const CreateHiring: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState('');
+
+  // ——— Campaign state (created as soon as JD is provided) ———
+  const [campaignId, setCampaignId] = useState<string | null>(embeddedCampaignId ?? null);
+  const [campaignSaving, setCampaignSaving] = useState(false);
+  const [campaignUpdating, setCampaignUpdating] = useState(false);
+  const [launching, setLaunching] = useState(false);
+  const campaignIdRef = React.useRef<string | null>(embeddedCampaignId ?? null); // stable ref for callbacks
+  const assignedAgentIdRef = React.useRef<string | null>(null);
+  
   const candidateFileRef = useRef<HTMLInputElement>(null);
   const [showSheetsModal, setShowSheetsModal] = useState(false);
   const [sheetsUrl, setSheetsUrl] = useState('');
@@ -85,17 +116,73 @@ const CreateHiring: React.FC = () => {
   const [fetchingSheets, setFetchingSheets] = useState(false);
 
   // ——— Recruiter ———
+  const [availableAgents, setAvailableAgents] = useState<AIRecruiter[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(true);
+  const [agentsError, setAgentsError] = useState('');
   const [selectedRecruiter, setSelectedRecruiter] = useState<AIRecruiter | null>(null);
   const [instructions, setInstructions] = useState('');
-  const [showCreateRecruiterModal, setShowCreateRecruiterModal] = useState(false);
-  const [newRecruiterForm, setNewRecruiterForm] = useState({
-    name: '', conversationStyle: 'friendly_professional',
-    languages: 'english_hindi', voice: 'Warm & Clear', interviewInstructions: '',
-  });
-  const [recruiterErrors, setRecruiterErrors] = useState<Record<string, string>>({});
+  const isEmbeddedCandidateUpload = embeddedMode === 'candidate-upload';
+  const isEmbeddedCampaignCreate = embeddedMode === 'campaign-create';
 
   const validCandidates = parsedCandidates.filter(c => c._valid);
   const totalResumes = resumeFiles.length;
+
+  // ——— Fetch agents from backend on mount ———
+  useEffect(() => {
+    if (isEmbeddedCandidateUpload) return;
+    setAgentsLoading(true);
+    setAgentsError('');
+    listAgents()
+      .then(agents => {
+        const mappedAgents = agents.map(a => {
+          const existing = recruiters.find(r => r.id === a.id);
+          const recruiterData: AIRecruiter = {
+            id: a.id,
+            name: a.name,
+            description: `${a.conversation_style} tone.`,
+            languages: LANG_ARRAY_FROM_API[a.languages] ?? ['English'],
+            voice: a.voice,
+            conversationStyle: a.conversation_style,
+            interviewInstructions: a.interview_instruction,
+            avatarInitial: a.name[0]?.toUpperCase() ?? 'A',
+            avatarColor: existing?.avatarColor ?? AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
+          };
+          if (existing) {
+            dispatch({ type: 'UPDATE_RECRUITER', payload: { id: a.id, updates: recruiterData } });
+          } else {
+            dispatch({ type: 'CREATE_RECRUITER', payload: recruiterData });
+          }
+          return recruiterData;
+        });
+        setAvailableAgents(mappedAgents);
+      })
+      .catch(err => {
+        const message = err instanceof Error ? err.message : 'Failed to load AI agents';
+        setAgentsError(message);
+        showToast(message, 'error');
+      })
+      .finally(() => setAgentsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEmbeddedCandidateUpload]);
+
+  useEffect(() => {
+    if (!embeddedCampaignId) return;
+    let cancelled = false;
+    listCampaigns()
+      .then(campaigns => {
+        const campaign = campaigns.find(item => item.id === embeddedCampaignId);
+        if (!campaign) throw new Error('The selected campaign could not be found.');
+        if (!cancelled) {
+          setForm(current => ({ ...current, title: campaign.title }));
+        }
+      })
+      .catch(error => {
+        if (!cancelled) {
+          showToast(error instanceof Error ? error.message : 'Campaign details could not be loaded.', 'error');
+        }
+      });
+    return () => { cancelled = true; };
+  }, [embeddedCampaignId, showToast]);
 
   // ——— Intersection observer for active section ———
   useEffect(() => {
@@ -122,6 +209,49 @@ const CreateHiring: React.FC = () => {
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  // ——— Create or update campaign when JD is confirmed ———
+  const submitJd = async (opts: { file?: File; text?: string }) => {
+    if (!form.title.trim()) {
+      showToast('Please fill in the Job Title first', 'info');
+      scrollToSection('job');
+      return;
+    }
+    const jdContent = opts.file ? undefined : (opts.text ?? jdText).trim();
+    if (!opts.file && !jdContent) return; // nothing to send
+
+    setCampaignSaving(true);
+    try {
+      const payload = {
+        title: form.title.trim(),
+        rawText: opts.file ? undefined : jdContent,
+        file: opts.file,
+        required_fields: {
+          location: form.location.trim(),
+          employment_type: form.employmentType,
+          role_summary: form.description.trim(),
+        },
+      };
+      let campaign;
+      if (campaignIdRef.current) {
+        campaign = await updateCampaign(campaignIdRef.current, payload);
+      } else {
+        campaign = await createCampaign(payload);
+        campaignIdRef.current = campaign.id;
+        setCampaignId(campaign.id);
+        if (selectedRecruiter) {
+          await updateCampaign(campaign.id, { agentId: selectedRecruiter.id });
+          assignedAgentIdRef.current = selectedRecruiter.id;
+        }
+      }
+      showToast('Campaign saved ✓', 'success');
+      return campaign;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to save campaign', 'error');
+    } finally {
+      setCampaignSaving(false);
+    }
+  };
+
   // ——— JD upload ———
   const handleJdFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -131,26 +261,41 @@ const CreateHiring: React.FC = () => {
       return;
     }
     setJdUploading(true);
-    setTimeout(() => {
-      setJdFileName(file.name);
-      setJdText(`[Uploaded from ${file.name}]`);
-      setJdUploading(false);
-      showToast(`JD uploaded: ${file.name}`, 'success');
-    }, 900);
+    setJdFileName(file.name);
+    setJdFileObj(file);
+    setJdText(`[Uploaded from ${file.name}]`);
+    // Call the API immediately
+    void submitJd({ file }).finally(() => setJdUploading(false));
     if (jdFileRef.current) jdFileRef.current.value = '';
   };
 
+  // ——— JD text blur — create/update campaign ———
+  const handleJdTextBlur = () => {
+    if (jdText.trim()) submitJd({ text: jdText });
+  };
+
   // ——— Resume upload ———
-  const handleResumeFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleResumeFilesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     setResumeUploading(true);
-    setTimeout(() => {
-      setResumeFiles(prev => [...prev, ...files.map(f => f.name)]);
-      setResumeMode('upload');
-      setResumeUploading(false);
-      showToast(`${files.length} resume${files.length > 1 ? 's' : ''} added`, 'success');
-    }, 800);
+    setResumeFiles(prev => [...prev, ...files.map(f => f.name)]);
+    setResumeFileObjs(prev => [...prev, ...files]);
+    setResumeMode('upload');
+    // Upload to existing campaign immediately if available
+    if (campaignIdRef.current) {
+      try {
+        const batch = await uploadCandidateFiles(campaignIdRef.current, files);
+        files.forEach(file => uploadedResumeFilesRef.current.add(file));
+        onCandidateUploadComplete?.(batch.batch_id);
+        showToast(`${files.length} resume${files.length > 1 ? 's' : ''} uploaded`, 'success');
+      } catch (err: any) {
+        showToast(err.message || 'Resume upload failed', 'error');
+      }
+    } else {
+      showToast(`${files.length} resume${files.length > 1 ? 's' : ''} added (will upload on launch)`, 'info');
+    }
+    setResumeUploading(false);
     if (resumeFileRef.current) resumeFileRef.current.value = '';
   };
 
@@ -217,47 +362,25 @@ const CreateHiring: React.FC = () => {
     }
   };
 
-  // ——— Create recruiter ———
-  const handleSaveRecruiter = () => {
-    const e: Record<string, string> = {};
-    if (!newRecruiterForm.name.trim()) e.name = 'Name is required';
-    if (!newRecruiterForm.interviewInstructions.trim()) e.interviewInstructions = 'Instructions are required';
-    setRecruiterErrors(e);
-    if (Object.keys(e).length > 0) return;
-
-    const langMap: Record<string, string[]> = {
-      english: ['English'], english_hindi: ['English', 'Hindi'],
-      english_hindi_marathi: ['English', 'Hindi', 'Marathi'],
-    };
-    const styleMap: Record<string, string> = {
-      friendly_professional: 'Friendly Professional', professional: 'Professional',
-      conversational: 'Conversational', formal: 'Formal',
-    };
-    const newRec: AIRecruiter = {
-      id: `ar_${Date.now()}`,
-      name: newRecruiterForm.name.trim(),
-      description: `${styleMap[newRecruiterForm.conversationStyle]} tone.`,
-      languages: langMap[newRecruiterForm.languages] || ['English'],
-      voice: newRecruiterForm.voice,
-      conversationStyle: styleMap[newRecruiterForm.conversationStyle],
-      interviewInstructions: newRecruiterForm.interviewInstructions.trim(),
-      avatarInitial: newRecruiterForm.name[0].toUpperCase(),
-      avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
-    };
-    dispatch({ type: 'CREATE_RECRUITER', payload: newRec });
-    setSelectedRecruiter(newRec);
-    setInstructions(newRec.interviewInstructions || '');
-    setShowCreateRecruiterModal(false);
-    showToast(`AI Recruiter "${newRec.name}" created`, 'success');
-  };
-
-  const handleSelectRecruiter = (r: AIRecruiter) => {
-    setSelectedRecruiter(r);
-    setInstructions(
-      form.title
-        ? `Screen candidates for the ${form.title} position in ${form.location}. Ask about their experience, current role, availability to join, and expected salary. Be ${r.conversationStyle.toLowerCase()}.`
-        : r.interviewInstructions || ''
-    );
+  const handleSelectRecruiter = async (r: AIRecruiter) => {
+    if (campaignUpdating || launching) return;
+    setCampaignUpdating(true);
+    try {
+      if (campaignIdRef.current) {
+        await updateCampaign(campaignIdRef.current, { agentId: r.id });
+        assignedAgentIdRef.current = r.id;
+      }
+      setSelectedRecruiter(r);
+      setInstructions(
+        form.title
+          ? `Screen candidates for the ${form.title} position in ${form.location}. Ask about their experience, current role, availability to join, and expected salary. Be ${r.conversationStyle.toLowerCase()}.`
+          : r.interviewInstructions || ''
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to assign AI agent to campaign', 'error');
+    } finally {
+      setCampaignUpdating(false);
+    }
   };
 
   // ——— Validation before launch ———
@@ -282,7 +405,7 @@ const CreateHiring: React.FC = () => {
       return false;
     }
     if (!selectedRecruiter) {
-      showToast('Please select an AI Recruiter in Step 5', 'error');
+      showToast('Please select an AI agent in Step 5', 'error');
       scrollToSection('recruiter');
       return false;
     }
@@ -290,34 +413,83 @@ const CreateHiring: React.FC = () => {
   };
 
   // ——— Launch ———
-  const launch = (mode: 'screen_only' | 'screen_and_call') => {
+  const launch = async () => {
     if (!validate()) return;
-    const hiringId = `h_${Date.now()}`;
-    const now = new Date().toISOString();
-    dispatch({
-      type: 'CREATE_HIRING',
-      payload: {
-        id: hiringId, title: form.title, location: form.location,
-        employmentType: form.employmentType as EmploymentType,
-        description: form.description, jdText,
-        jdFileName: jdFileName || undefined, resumeCount: totalResumes,
-        status: 'screening', aiRecruiterId: selectedRecruiter!.id,
-        interviewInstructions: instructions || selectedRecruiter!.interviewInstructions,
-        candidateIds: [], candidateCount: 0,
-        contacted: 0, connected: 0, interested: 0, shortlisted: 0,
-        createdAt: now, updatedAt: now,
-      },
-    });
-    dispatch({
-      type: 'ADD_ACTIVITY',
-      payload: {
-        id: `act_create_${Date.now()}`, type: 'hiring_created',
-        hiringTitle: form.title,
-        description: `${form.title} hiring created — AI resume screening starting`,
-        timestamp: now, timeAgo: 'just now',
-      },
-    });
-    navigate(`/hiring/${hiringId}/screening?resumes=${totalResumes}&mode=${mode}`);
+
+    setLaunching(true);
+    try {
+      let hiringId = campaignIdRef.current;
+
+      if (!hiringId) {
+        const campaign = await createCampaign({
+          title: form.title.trim(),
+          rawText: jdFileObj ? undefined : jdText.trim(),
+          file: jdFileObj || undefined,
+          required_fields: {
+            location: form.location.trim(),
+            employment_type: form.employmentType,
+            role_summary: form.description.trim(),
+          },
+        });
+        hiringId = campaign.id;
+        campaignIdRef.current = campaign.id;
+        setCampaignId(campaign.id);
+        await updateCampaign(hiringId, { agentId: selectedRecruiter!.id });
+        assignedAgentIdRef.current = selectedRecruiter!.id;
+      } else if (assignedAgentIdRef.current !== selectedRecruiter!.id) {
+        await updateCampaign(hiringId, { agentId: selectedRecruiter!.id });
+        assignedAgentIdRef.current = selectedRecruiter!.id;
+      }
+
+      const pendingResumeFiles = resumeFileObjs.filter(file => !uploadedResumeFilesRef.current.has(file));
+      if (pendingResumeFiles.length > 0) {
+        await uploadCandidateFiles(hiringId, pendingResumeFiles);
+        pendingResumeFiles.forEach(file => uploadedResumeFilesRef.current.add(file));
+      }
+
+      const screeningBatch = await screenCandidates(hiringId);
+      if (!screeningBatch.batch_id) {
+        throw new Error('Screening started without returning a batch ID.');
+      }
+
+      const now = new Date().toISOString();
+      dispatch({
+        type: 'CREATE_HIRING',
+        payload: {
+          id: hiringId, title: form.title, location: form.location,
+          employmentType: form.employmentType as EmploymentType,
+          description: form.description, jdText,
+          jdFileName: jdFileName || undefined, resumeCount: totalResumes,
+          status: 'screening', aiRecruiterId: selectedRecruiter!.id,
+          interviewInstructions: instructions || selectedRecruiter!.interviewInstructions,
+          candidateIds: [], candidateCount: 0,
+          contacted: 0, connected: 0, interested: 0, shortlisted: 0,
+          createdAt: now, updatedAt: now,
+        },
+      });
+      dispatch({
+        type: 'ADD_ACTIVITY',
+        payload: {
+          id: `act_create_${Date.now()}`, type: 'hiring_created',
+          hiringTitle: form.title,
+          description: `${form.title} hiring created — AI resume screening starting`,
+          timestamp: now, timeAgo: 'just now',
+        },
+      });
+      if (onScreeningStarted) {
+        onScreeningStarted({
+          campaignId: hiringId,
+          title: form.title.trim(),
+          batchId: screeningBatch.batch_id,
+        });
+      } else {
+        navigate(`/hiring/${hiringId}/screening?resumes=${totalResumes}&batch_id=${encodeURIComponent(screeningBatch.batch_id)}`);
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to start candidate screening', 'error');
+    } finally {
+      setLaunching(false);
+    }
   };
 
   // ——— Section completion flags (for nav dots) ———
@@ -331,9 +503,9 @@ const CreateHiring: React.FC = () => {
   };
 
   return (
-    <div className="ch-page">
+    <div className={`ch-page${isEmbeddedCandidateUpload ? ' ch-page--chat-upload' : ''}${isEmbeddedCampaignCreate ? ' ch-page--chat-create' : ''}`}>
       {/* ══ LEFT: sticky sidebar nav ══ */}
-      <aside className="ch-sidenav">
+      {!isEmbeddedCandidateUpload && !isEmbeddedCampaignCreate && <aside className="ch-sidenav">
         <button className="ch-sidenav__back" onClick={() => navigate('/hiring')}>
           <ArrowLeft size={15} /> Back to Hiring
         </button>
@@ -365,7 +537,7 @@ const CreateHiring: React.FC = () => {
           {totalResumes > 0 && <p className="ch-sidenav__summary-item"><strong>Resumes:</strong> {totalResumes}</p>}
           {selectedRecruiter && <p className="ch-sidenav__summary-item"><strong>AI:</strong> {selectedRecruiter.name}</p>}
         </div>
-      </aside>
+      </aside>}
 
       {/* ══ RIGHT: scrollable form body ══ */}
       <div className="ch-body" ref={scrollRef}>
@@ -386,6 +558,11 @@ const CreateHiring: React.FC = () => {
                 placeholder="e.g. Sales Executive, Frontend Developer, HR Manager"
                 value={form.title}
                 onChange={e => { setForm(f => ({ ...f, title: e.target.value })); setFormErrors(er => ({ ...er, title: '' })); }}
+                onBlur={() => {
+                  if (jdFileObj && !campaignIdRef.current) {
+                    submitJd({ file: jdFileObj });
+                  }
+                }}
                 error={formErrors.title}
               />
               <div className="ch-row">
@@ -451,12 +628,18 @@ const CreateHiring: React.FC = () => {
                     placeholder={`We are looking for a Senior Sales Executive with 4+ years of B2B experience...\n\nResponsibilities:\n- Manage enterprise accounts\n- Hit quarterly targets\n- Build client relationships\n\nRequirements:\n- 3+ years B2B sales\n- Strong CRM skills\n- Excellent communication`}
                     value={jdText}
                     onChange={e => setJdText(e.target.value)}
+                    onBlur={handleJdTextBlur}
                     rows={12}
                     hint="The AI will match each resume against this description."
                   />
-                  {jdText.trim() && (
+                  {campaignSaving && (
+                    <div className="ch-status-pill ch-status-pill--info">
+                      <Loader2 size={13} className="spin" /> Saving campaign…
+                    </div>
+                  )}
+                  {!campaignSaving && jdText.trim() && (
                     <div className="ch-status-pill ch-status-pill--success">
-                      <Check size={13} /> JD ready — {jdText.trim().split(/\s+/).length} words
+                      <Check size={13} /> JD ready — {jdText.trim().split(/\s+/).length} words{campaignId ? ' · Campaign saved ✓' : ''}
                     </div>
                   )}
                 </div>
@@ -481,7 +664,7 @@ const CreateHiring: React.FC = () => {
                       <div className="ch-status-pill ch-status-pill--success" style={{ margin: 0 }}>
                         <Check size={12} /> Uploaded
                       </div>
-                      <button className="ch-file-chip__remove" onClick={() => { setJdFileName(''); setJdText(''); }}>
+                      <button className="ch-file-chip__remove" onClick={() => { setJdFileName(''); setJdText(''); setJdFileObj(null); }}>
                         <X size={13} />
                       </button>
                     </div>
@@ -505,8 +688,14 @@ const CreateHiring: React.FC = () => {
             <div className="ch-section__header">
               <div className="ch-section__num">3</div>
               <div>
-                <h2 className="ch-section__title">Resume Source</h2>
-                <p className="ch-section__sub">Provide candidate resumes for AI screening. Upload small batches directly or connect Google Drive for larger collections.</p>
+                <h2 className="ch-section__title">
+                  {isEmbeddedCandidateUpload ? `Upload candidates${form.title ? ` for ${form.title}` : ''}` : 'Resume Source'}
+                </h2>
+                <p className="ch-section__sub">
+                  {isEmbeddedCandidateUpload
+                    ? 'Choose candidate resume files to upload to this campaign.'
+                    : 'Provide candidate resumes for AI screening. Upload small batches directly or connect Google Drive for larger collections.'}
+                </p>
               </div>
             </div>
             <div className="ch-section__body">
@@ -515,21 +704,32 @@ const CreateHiring: React.FC = () => {
                 <button
                   className={`ch-toggle-btn ${resumeMode === 'upload' ? 'ch-toggle-btn--active' : ''}`}
                   onClick={() => resumeFileRef.current?.click()}
+                  disabled={resumeUploading || (isEmbeddedCandidateUpload && !campaignIdRef.current)}
                 >
                   <Upload size={15} />
-                  Upload resumes <span style={{ fontSize: '10px', opacity: 0.7 }}>(≤ 20 files)</span>
+                  {isEmbeddedCandidateUpload ? 'Upload candidate files' : 'Upload resumes'}
+                  {!isEmbeddedCandidateUpload && <span style={{ fontSize: '10px', opacity: 0.7 }}>(≤ 20 files)</span>}
                 </button>
-                <button
-                  className={`ch-toggle-btn ${resumeMode === 'drive' ? 'ch-toggle-btn--active' : ''}`}
-                  onClick={handleConnectDrive}
-                  disabled={driveConnecting}
-                >
-                  {driveConnecting ? <Loader2 size={15} className="spin" /> : <HardDrive size={15} />}
-                  {driveConnecting ? 'Connecting…' : 'Import from Google Drive'}
-                </button>
+                {!isEmbeddedCandidateUpload && (
+                  <button
+                    className={`ch-toggle-btn ${resumeMode === 'drive' ? 'ch-toggle-btn--active' : ''}`}
+                    onClick={handleConnectDrive}
+                    disabled={driveConnecting}
+                  >
+                    {driveConnecting ? <Loader2 size={15} className="spin" /> : <HardDrive size={15} />}
+                    {driveConnecting ? 'Connecting…' : 'Import from Google Drive'}
+                  </button>
+                )}
               </div>
 
-              <input ref={resumeFileRef} type="file" accept=".pdf,.docx,.doc" multiple style={{ display: 'none' }} onChange={handleResumeFilesChange} />
+              <input
+                ref={resumeFileRef}
+                type="file"
+                accept={isEmbeddedCandidateUpload ? '.pdf,.docx,.doc,.txt,.zip,.csv' : '.pdf,.docx,.doc'}
+                multiple
+                style={{ display: 'none' }}
+                onChange={handleResumeFilesChange}
+              />
 
               {resumeUploading && (
                 <div className="ch-status-pill" style={{ background: 'var(--brand-primary-light)', color: 'var(--brand-primary)', border: '1px solid var(--brand-primary-border)' }}>
@@ -549,7 +749,7 @@ const CreateHiring: React.FC = () => {
                     <button
                       className="ch-file-chip__remove"
                       style={{ padding: '4px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-default)', background: 'var(--bg-white)', cursor: 'pointer', fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}
-                      onClick={() => { setResumeFiles([]); setResumeMode(null); }}
+                      onClick={() => { setResumeFiles([]); setResumeFileObjs([]); setResumeMode(null); }}
                     >
                       <X size={12} /> Clear
                     </button>
@@ -686,22 +886,25 @@ const CreateHiring: React.FC = () => {
             <div className="ch-section__header">
               <div className="ch-section__num">5</div>
               <div>
-                <h2 className="ch-section__title">Select AI Recruiter</h2>
-                <p className="ch-section__sub">Choose the AI Recruiter that will conduct calls after screening.</p>
+                <h2 className="ch-section__title">Select AI Agent</h2>
+                <p className="ch-section__sub">Choose an agent to assign to this campaign for future calls.</p>
               </div>
             </div>
             <div className="ch-section__body">
-              {recruiters.length === 0 ? (
+              {agentsLoading ? (
+                <div className="ch-status-pill ch-status-pill--info">
+                  <Loader2 size={13} className="spin" /> Loading AI agents…
+                </div>
+              ) : agentsError ? (
+                <div className="ch-error"><AlertCircle size={14} /> {agentsError}</div>
+              ) : availableAgents.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '24px 0' }}>
-                  <p style={{ color: 'var(--text-secondary)', marginBottom: '12px', fontSize: 'var(--font-size-sm)' }}>No AI Recruiters yet. Create one to continue.</p>
-                  <Button icon={<ChevronRight size={14} />} onClick={() => setShowCreateRecruiterModal(true)}>
-                    Create AI Recruiter
-                  </Button>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>No AI agents are available. Create an agent before continuing.</p>
                 </div>
               ) : (
                 <>
                   <div className="ch-recruiter-grid">
-                    {recruiters.map(r => (
+                    {availableAgents.map(r => (
                       <RecruiterCard
                         key={r.id}
                         recruiter={r}
@@ -709,11 +912,12 @@ const CreateHiring: React.FC = () => {
                         onClick={() => handleSelectRecruiter(r)}
                       />
                     ))}
-                    <button className="recruiter-card recruiter-card--add" onClick={() => setShowCreateRecruiterModal(true)}>
-                      <span className="recruiter-card--add__icon">+</span>
-                      <span>New AI Recruiter</span>
-                    </button>
                   </div>
+                  {campaignUpdating && (
+                    <div className="ch-status-pill ch-status-pill--info">
+                      <Loader2 size={13} className="spin" /> Assigning AI agent to campaign…
+                    </div>
+                  )}
 
                   {selectedRecruiter && (
                     <div className="ch-instructions animate-fade-in">
@@ -791,7 +995,7 @@ const CreateHiring: React.FC = () => {
                       <p>AI evaluates all {totalResumes > 0 ? totalResumes : '…'} resumes against the JD. You review results before any calls are made.</p>
                     </div>
                   </div>
-                  <Button variant="outline" size="lg" fullWidth icon={<Sparkles size={15} />} onClick={() => launch('screen_only')}>
+                  <Button variant="outline" size="lg" fullWidth disabled={launching || campaignUpdating || campaignSaving || jdUploading || resumeUploading} loading={launching} icon={<Sparkles size={15} />} onClick={launch}>
                     Screen Only
                   </Button>
                 </div>
@@ -801,10 +1005,10 @@ const CreateHiring: React.FC = () => {
                     <Play size={18} style={{ color: 'var(--status-success-text)' }} />
                     <div>
                       <h3>Screen &amp; Start Calling</h3>
-                      <p>AI screens, then immediately calls compatible candidates — no manual step required.</p>
+                      <p>Starts candidate screening. Calling can be started separately after reviewing results.</p>
                     </div>
                   </div>
-                  <Button variant="primary" size="lg" fullWidth icon={<Play size={15} />} onClick={() => launch('screen_and_call')}>
+                  <Button variant="primary" size="lg" fullWidth disabled={launching || campaignUpdating || campaignSaving || jdUploading || resumeUploading} loading={launching} icon={<Play size={15} />} onClick={launch}>
                     Screen &amp; Start Calling
                   </Button>
                 </div>
@@ -813,7 +1017,7 @@ const CreateHiring: React.FC = () => {
           </section>
 
           {/* bottom spacer */}
-          <div style={{ height: '60px' }} />
+          <div className="ch-bottom-spacer" style={{ height: '60px' }} />
         </div>
       </div>
 
@@ -844,27 +1048,6 @@ const CreateHiring: React.FC = () => {
         </div>
       </Modal>
 
-      <Modal
-        open={showCreateRecruiterModal}
-        onClose={() => setShowCreateRecruiterModal(false)}
-        title="Create AI Recruiter"
-        size="md"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setShowCreateRecruiterModal(false)}>Cancel</Button>
-            <Button onClick={handleSaveRecruiter}>Create</Button>
-          </>
-        }
-      >
-        <div className="recruiter-form">
-          <Input label="Name" placeholder="e.g. Ava, Aria, Riya" value={newRecruiterForm.name} onChange={e => setNewRecruiterForm(f => ({ ...f, name: e.target.value }))} error={recruiterErrors.name} />
-          <Select label="Conversation style" options={[{ value: 'friendly_professional', label: 'Friendly Professional' }, { value: 'professional', label: 'Professional' }, { value: 'conversational', label: 'Conversational' }, { value: 'formal', label: 'Formal' }]} value={newRecruiterForm.conversationStyle} onChange={e => setNewRecruiterForm(f => ({ ...f, conversationStyle: e.target.value }))} />
-          <Select label="Languages" options={[{ value: 'english', label: 'English' }, { value: 'english_hindi', label: 'English + Hindi' }, { value: 'english_hindi_marathi', label: 'English + Hindi + Marathi' }]} value={newRecruiterForm.languages} onChange={e => setNewRecruiterForm(f => ({ ...f, languages: e.target.value }))} />
-          <Select label="Voice" options={[{ value: 'Warm & Clear', label: 'Warm & Clear' }, { value: 'Clear & Confident', label: 'Clear & Confident' }, { value: 'Natural & Clear', label: 'Natural & Clear' }, { value: 'Soft & Professional', label: 'Soft & Professional' }]} value={newRecruiterForm.voice} onChange={e => setNewRecruiterForm(f => ({ ...f, voice: e.target.value }))} />
-          <Textarea label="Interview instructions" placeholder="Tell this AI Recruiter what to ask and screen for…" value={newRecruiterForm.interviewInstructions} onChange={e => setNewRecruiterForm(f => ({ ...f, interviewInstructions: e.target.value }))} rows={4} error={recruiterErrors.interviewInstructions} hint="e.g. Screen for experience, availability, and expected salary." />
-        </div>
-      </Modal>
-
       {injectStyles()}
     </div>
   );
@@ -880,6 +1063,52 @@ function injectStyles() {
   display: flex;
   min-height: 100vh;
   background: var(--bg-app);
+}
+
+.ch-page--chat-upload {
+  min-height: 0;
+  height: auto;
+}
+
+.ch-page--chat-create {
+  display: block;
+  min-height: 0;
+  height: auto;
+}
+
+.ch-page--chat-upload .ch-body {
+  overflow: visible;
+}
+
+.ch-page--chat-create .ch-body {
+  overflow: visible;
+}
+
+.ch-page--chat-upload .ch-form {
+  max-width: none;
+  padding: 4px 0 0;
+}
+
+.ch-page--chat-create .ch-form {
+  max-width: none;
+  padding: 24px 28px 0;
+}
+
+.ch-page--chat-upload .ch-section:not(#ch-section-resumes),
+.ch-page--chat-upload .ch-divider {
+  display: none;
+}
+
+.ch-page--chat-upload .ch-bottom-spacer {
+  display: none;
+}
+
+.ch-page--chat-upload #ch-section-resumes .ch-section__num {
+  display: none;
+}
+
+.ch-page--chat-upload #ch-section-resumes .ch-section__body {
+  padding-left: 0;
 }
 
 /* ── Left sticky sidebar ── */

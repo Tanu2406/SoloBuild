@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Pause, Play, MapPin, Calendar,
@@ -26,6 +26,13 @@ import {
   useCalls,
 } from '../store/appStore';
 import { callSimulationService } from '../services/callSimulationService';
+import {
+  listCampaignCandidates,
+  listCampaignDocumentScreenings,
+  listCampaigns,
+  mapCampaignCandidate,
+} from '../services/campaignService';
+import { LANG_ARRAY_FROM_API, listAgents } from '../services/agentService';
 import { useToast } from '../components/ui/Toast';
 import type { Candidate, Call } from '../types';
 
@@ -59,10 +66,152 @@ const HiringWorkspace: React.FC = () => {
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const hiring = useHiring(id || '');
+  const hiringRef = useRef(hiring);
   const candidates = useHiringCandidates(id || '');
   const allActivity = useActivity();
   const recruiters = useRecruiters();
   const allCalls = useCalls();
+  const [campaignDataLoading, setCampaignDataLoading] = useState(false);
+  const [campaignDataError, setCampaignDataError] = useState('');
+
+  useEffect(() => {
+    hiringRef.current = hiring;
+  }, [hiring]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    let cancelled = false;
+    setCampaignDataLoading(true);
+    setCampaignDataError('');
+
+    const loadCampaignData = async () => {
+      const [campaignsResult, candidatesResult, screeningsResult, agentsResult] = await Promise.allSettled([
+        listCampaigns(),
+        listCampaignCandidates(id),
+        listCampaignDocumentScreenings(id),
+        listAgents(),
+      ]);
+      if (cancelled) return;
+
+      const loadErrors: string[] = [];
+      const campaign = campaignsResult.status === 'fulfilled'
+        ? campaignsResult.value.find(item => item.id === id)
+        : undefined;
+      if (campaignsResult.status === 'rejected') {
+        loadErrors.push(campaignsResult.reason instanceof Error
+          ? `Campaign details: ${campaignsResult.reason.message}`
+          : 'Campaign details could not be loaded.');
+      }
+
+      if (agentsResult.status === 'fulfilled') {
+        const colors = ['#2563eb', '#0891b2', '#7c3aed', '#059669', '#dc2626', '#d97706'];
+        agentsResult.value.forEach((agent, index) => {
+          const agentData = {
+            id: agent.id,
+            name: agent.name,
+            description: `${agent.conversation_style} tone.`,
+            languages: LANG_ARRAY_FROM_API[agent.languages] ?? ['English'],
+            voice: agent.voice,
+            conversationStyle: agent.conversation_style,
+            interviewInstructions: agent.interview_instruction,
+            avatarInitial: agent.name[0]?.toUpperCase() ?? 'A',
+            avatarColor: colors[index % colors.length],
+          };
+          dispatch({ type: 'CREATE_RECRUITER', payload: agentData });
+        });
+      } else {
+        loadErrors.push(agentsResult.reason instanceof Error
+          ? `AI agent details: ${agentsResult.reason.message}`
+          : 'AI agent details could not be loaded.');
+      }
+
+      if (campaign) {
+        const currentHiring = hiringRef.current;
+        if (currentHiring) {
+          dispatch({
+            type: 'UPDATE_HIRING',
+            payload: {
+              id,
+              updates: {
+                title: campaign.title,
+                ...(campaign.agent_id ? { aiRecruiterId: campaign.agent_id } : {}),
+                createdAt: campaign.created_at,
+              },
+            },
+          });
+        } else {
+          const now = new Date().toISOString();
+          dispatch({
+            type: 'CREATE_HIRING',
+            payload: {
+              id,
+              title: campaign.title,
+              location: 'Not set',
+              employmentType: 'full_time',
+              status: 'screening',
+              ...(campaign.agent_id ? { aiRecruiterId: campaign.agent_id } : {}),
+              candidateIds: [],
+              candidateCount: 0,
+              contacted: 0,
+              connected: 0,
+              interested: 0,
+              shortlisted: 0,
+              createdAt: campaign.created_at || now,
+              updatedAt: campaign.updated_at || now,
+            },
+          });
+        }
+      } else if (campaignsResult.status === 'fulfilled' && !hiringRef.current) {
+        loadErrors.push('This campaign was not found in the campaigns list.');
+      }
+
+      if (candidatesResult.status === 'fulfilled') {
+        const screenings = screeningsResult.status === 'fulfilled' ? screeningsResult.value : [];
+        if (screeningsResult.status === 'rejected') {
+          loadErrors.push(screeningsResult.reason instanceof Error
+            ? `Document screening results: ${screeningsResult.reason.message}`
+            : 'Document screening results could not be loaded.');
+        }
+        const screeningsByCandidate = new Map(
+          screenings.map(screening => [screening.candidate_id, screening]),
+        );
+        const mapped = candidatesResult.value.map(candidate =>
+          mapCampaignCandidate(
+            candidate,
+            screeningsByCandidate.get(candidate.id),
+            campaign?.title ?? hiringRef.current?.title ?? '',
+          ),
+        );
+        dispatch({ type: 'ADD_CANDIDATES', payload: { hiringId: id, candidates: mapped } });
+        if (mapped.length > 0 && mapped.every(candidate => candidate.matchScore !== undefined)) {
+          dispatch({
+            type: 'UPDATE_HIRING',
+            payload: { id, updates: { status: 'screened', resumeCount: mapped.length } },
+          });
+        }
+      } else {
+        loadErrors.push(candidatesResult.reason instanceof Error
+          ? `Campaign candidates: ${candidatesResult.reason.message}`
+          : 'Campaign candidates could not be loaded.');
+      }
+
+      if (!cancelled && loadErrors.length > 0) {
+        setCampaignDataError(loadErrors.join(' '));
+      }
+      if (!cancelled) setCampaignDataLoading(false);
+    };
+
+    void loadCampaignData().catch(err => {
+      if (cancelled) return;
+      setCampaignDataError(err instanceof Error ? err.message : 'Failed to load campaign data.');
+      setCampaignDataLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, dispatch]);
 
   // Auto-start simulation when workspace opens for calling hirings
   useEffect(() => {
@@ -94,15 +243,19 @@ const HiringWorkspace: React.FC = () => {
   const recruiter = recruiters.find(r => r.id === hiring.aiRecruiterId);
   const hiringActivity = allActivity.filter(a => a.hiringTitle === hiring.title).slice(0, 20);
   const hiringCalls = allCalls.filter(c => c.hiringId === hiring.id);
+  const screenedCandidates = candidates.filter(c =>
+    c.documentScreeningId !== undefined || c.matchScore !== undefined
+  );
+  const pendingScreeningCount = candidates.length - screenedCandidates.length;
   const shortlistedCandidates = candidates.filter(c =>
     ['shortlisted', 'interview_scheduled', 'interview_completed', 'hired'].includes(c.status)
   );
-  const hasScreeningData = candidates.some(c => c.matchScore !== undefined);
+  const hasScreeningData = screenedCandidates.length > 0;
 
   // ——— Screening tab helpers ———
-  const compatibleCandidates = candidates.filter(c => c.compatibility === 'compatible');
-  const notCompatibleCandidates = candidates.filter(c => c.compatibility === 'not_compatible');
-  const screeningFiltered = candidates.filter(c => {
+  const compatibleCandidates = screenedCandidates.filter(c => c.compatibility === 'compatible');
+  const notCompatibleCandidates = screenedCandidates.filter(c => c.compatibility === 'not_compatible');
+  const screeningFiltered = screenedCandidates.filter(c => {
     const matchesFilter =
       screeningFilter === 'all' ||
       c.compatibility === screeningFilter;
@@ -238,7 +391,7 @@ const HiringWorkspace: React.FC = () => {
 
   const workspaceTabs = [
     { id: 'overview',   label: 'Overview' },
-    ...(hasScreeningData ? [{ id: 'screening', label: 'Screening Results', count: candidates.length }] : []),
+    ...(hasScreeningData ? [{ id: 'screening', label: 'Screening Results', count: screenedCandidates.length }] : []),
     { id: 'candidates', label: 'Candidates', count: candidates.length },
     { id: 'calls',      label: 'Call Logs',  count: hiringCalls.length },
     { id: 'results',    label: 'Shortlist & Decisions', count: shortlistedCandidates.length },
@@ -430,14 +583,33 @@ const HiringWorkspace: React.FC = () => {
         </div>
       </div>
 
+      {(campaignDataLoading || campaignDataError) && (
+        <div
+          role={campaignDataError ? 'alert' : 'status'}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '10px 14px', marginBottom: '14px',
+            background: campaignDataError ? 'var(--status-warning-bg)' : 'var(--bg-subtle)',
+            border: `1px solid ${campaignDataError ? 'var(--status-warning-border)' : 'var(--border-default)'}`,
+            borderRadius: 'var(--radius-md)',
+            color: campaignDataError ? 'var(--status-warning-text)' : 'var(--text-secondary)',
+            fontSize: 'var(--font-size-sm)',
+          }}
+        >
+          {campaignDataLoading && <Sparkles size={14} />}
+          {campaignDataLoading ? 'Refreshing campaign data…' : campaignDataError}
+        </div>
+      )}
+
       {/* Metric tiles */}
       <div className="metrics-row">
         <div className="metric-tile">
           <div className="metric-tile__header"><span>SCREENING PROGRESS</span></div>
           <div className="metric-tile__value">
-            {hiring.contacted} <span style={{ fontSize: 'var(--font-size-md)', color: 'var(--text-tertiary)', fontWeight: 500 }}>/ {hiring.candidateCount}</span>
+            {screenedCandidates.length} <span style={{ fontSize: 'var(--font-size-md)', color: 'var(--text-tertiary)', fontWeight: 500 }}>/ {candidates.length}</span>
           </div>
-          <div style={{ marginTop: '4px' }}><ProgressBar value={hiring.contacted} total={hiring.candidateCount || 1} /></div>
+          <div style={{ marginTop: '4px' }}><ProgressBar value={screenedCandidates.length} total={candidates.length || 1} /></div>
+          <span className="metric-tile__sub">Candidates with document-screening results</span>
         </div>
         <div className="metric-tile">
           <div className="metric-tile__header"><span>CONNECTED RATE</span></div>
@@ -563,8 +735,9 @@ const HiringWorkspace: React.FC = () => {
                 AI Resume Screening Results
               </h3>
               <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)', marginTop: '3px' }}>
-                {compatibleCandidates.length} compatible · {notCompatibleCandidates.length} not compatible ·
-                {' '}AI evaluated each resume against the job description.
+                {screenedCandidates.length} screened · {compatibleCandidates.length} compatible ·
+                {' '}{notCompatibleCandidates.length} not compatible
+                {pendingScreeningCount > 0 && ` · ${pendingScreeningCount} not yet screened`}
               </p>
             </div>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -605,7 +778,7 @@ const HiringWorkspace: React.FC = () => {
                 background: screeningFilter === f ? 'var(--brand-primary-light)' : 'var(--bg-white)',
                 color: screeningFilter === f ? 'var(--brand-primary)' : 'var(--text-secondary)',
               }}>
-                {f === 'all' ? `All (${candidates.length})` : f === 'compatible' ? `✓ Compatible (${compatibleCandidates.length})` : `✗ Not Compatible (${notCompatibleCandidates.length})`}
+                {f === 'all' ? `Screened (${screenedCandidates.length})` : f === 'compatible' ? `✓ Compatible (${compatibleCandidates.length})` : `✗ Not Compatible (${notCompatibleCandidates.length})`}
               </button>
             ))}
             <input
@@ -624,7 +797,8 @@ const HiringWorkspace: React.FC = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {screeningFiltered.map(c => {
               const included = isIncluded(c);
-              const score = c.matchScore || 0;
+              const score = c.matchScore;
+              const hasCompatibility = c.compatibility !== undefined;
               return (
                 <div key={c.id} className="screening-card" style={{
                   background: 'var(--bg-white)', border: `1px solid ${included ? 'var(--border-default)' : 'var(--border-subtle)'}`,
@@ -640,17 +814,30 @@ const HiringWorkspace: React.FC = () => {
                         <span style={{
                           fontSize: '11px', fontWeight: 700, padding: '2px 8px',
                           borderRadius: 'var(--radius-full)',
-                          background: scoreBg(score), color: scoreColor(score),
+                          background: score === undefined ? 'var(--bg-subtle)' : scoreBg(score),
+                          color: score === undefined ? 'var(--text-muted)' : scoreColor(score),
                         }}>
-                          {score}% Match
+                          {score === undefined ? 'Score unavailable' : `${score}% Match`}
                         </span>
                         <span style={{
                           fontSize: '11px', fontWeight: 600, padding: '2px 8px',
                           borderRadius: 'var(--radius-full)',
-                          background: c.compatibility === 'compatible' ? 'var(--status-success-bg)' : 'var(--status-error-bg)',
-                          color: c.compatibility === 'compatible' ? 'var(--status-success-text)' : 'var(--status-error-text)',
+                          background: c.compatibility === 'compatible'
+                            ? 'var(--status-success-bg)'
+                            : c.compatibility === 'not_compatible'
+                              ? 'var(--status-error-bg)'
+                              : 'var(--bg-subtle)',
+                          color: c.compatibility === 'compatible'
+                            ? 'var(--status-success-text)'
+                            : c.compatibility === 'not_compatible'
+                              ? 'var(--status-error-text)'
+                              : 'var(--text-muted)',
                         }}>
-                          {c.compatibility === 'compatible' ? '✓ Compatible' : '✗ Not Compatible'}
+                          {c.compatibility === 'compatible'
+                            ? '✓ Compatible'
+                            : c.compatibility === 'not_compatible'
+                              ? '✗ Not Compatible'
+                              : hasCompatibility ? 'Unclassified' : 'Not scored'}
                         </span>
                       </div>
                       <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)', marginTop: '2px' }}>
@@ -718,8 +905,10 @@ const HiringWorkspace: React.FC = () => {
             {screeningFiltered.length === 0 && (
               <EmptyState
                 icon={<Users size={24} />}
-                title="No candidates match this filter"
-                description="Try a different filter or clear the search."
+                title={screenedCandidates.length === 0 ? 'No screening results yet' : 'No candidates match this filter'}
+                description={screenedCandidates.length === 0 && pendingScreeningCount > 0
+                  ? `${pendingScreeningCount} candidate${pendingScreeningCount === 1 ? '' : 's'} in this campaign have not been document screened. They remain available in the Candidates tab.`
+                  : 'Try a different filter or clear the search.'}
               />
             )}
           </div>

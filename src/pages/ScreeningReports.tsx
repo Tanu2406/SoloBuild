@@ -5,53 +5,60 @@
 // Filters: All | Active | Completed | Needs Review | Recently Updated
 // ============================================================
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  FileText, Search, Users, CheckCircle2, Phone,
+  FileText, Search, Users, CheckCircle2, Phone, Loader2,
   Star, ChevronRight, AlertCircle,
 } from 'lucide-react';
 import { HiringStatusBadge } from '../components/ui/Badge';
 import { Avatar } from '../components/ui/Avatar';
-import { useHirings, useCandidates } from '../store/appStore';
+import { useAppStore } from '../store/appStore';
+import {
+  listCampaignCandidates,
+  listCampaignDocumentScreenings,
+  listCampaigns,
+  mapCampaignCandidate,
+} from '../services/campaignService';
 import type { Hiring, Candidate } from '../types';
 
 // ─── Per-hiring aggregated stats ─────────────────────────────
 interface HiringReportSummary {
   hiring: Hiring;
-  totalCandidates: number;
-  resumeScreened: number;
-  callScreened: number;
-  strongMatches: number;
-  needsReview: number;
-  shortlisted: number;
+  totalCandidates: number | null;
+  resumeScreened: number | null;
+  callScreened: number | null;
+  strongMatches: number | null;
+  needsReview: number | null;
+  shortlisted: number | null;
   lastActivity: string;
 }
 
-function buildSummary(hiring: Hiring, candidates: Candidate[]): HiringReportSummary {
-  const hc = candidates.filter(c => c.hiringId === hiring.id);
-  const resumeScreened = hc.filter(c => c.matchScore !== undefined).length;
-  const callScreened = hc.filter(c => c.callAssessmentComplete).length;
-  const strongMatches = hc.filter(c => (c.matchScore ?? 0) >= 80 && c.compatibility === 'compatible').length;
-  const needsReview = hc.filter(c =>
-    c.callAssessmentComplete &&
-    ['interested', 'connected'].includes(c.status) &&
-    !['interview_scheduled', 'interview_completed', 'hired'].includes(c.status)
-  ).length;
-  const shortlisted = hc.filter(c =>
-    ['shortlisted', 'interview_scheduled', 'interview_completed', 'hired'].includes(c.status)
-  ).length;
+function buildSummary(
+  hiring: Hiring,
+  candidates: Candidate[],
+  candidatesLoaded: boolean,
+  resumeScreened: number | null,
+  strongMatches: number | null,
+): HiringReportSummary {
+  const hc = candidates;
+  const callScreened = null;
+  const needsReview = null;
+  const shortlisted = null;
 
   // last activity: most recent lastActivityAt
-  const timestamps = hc
-    .map(c => c.lastActivityAt)
-    .filter(Boolean) as string[];
-  const latestTs = timestamps.sort().reverse()[0];
-  const lastActivity = latestTs
-    ? timeAgoFromIso(latestTs)
-    : 'No activity';
+  const lastActivity = hiring.updatedAt ? timeAgoFromIso(hiring.updatedAt) : 'No activity';
 
-  return { hiring, totalCandidates: hc.length, resumeScreened, callScreened, strongMatches, needsReview, shortlisted, lastActivity };
+  return {
+    hiring,
+    totalCandidates: candidatesLoaded ? hc.length : null,
+    resumeScreened,
+    callScreened,
+    strongMatches,
+    needsReview,
+    shortlisted,
+    lastActivity,
+  };
 }
 
 function timeAgoFromIso(iso: string): string {
@@ -80,7 +87,7 @@ function matchesFilter(s: HiringReportSummary, f: FilterId): boolean {
   if (f === 'all') return true;
   if (f === 'active') return ['calling', 'paused', 'ready', 'screening'].includes(s.hiring.status);
   if (f === 'completed') return s.hiring.status === 'completed';
-  if (f === 'needs_review') return s.needsReview > 0;
+  if (f === 'needs_review') return (s.needsReview ?? 0) > 0;
   if (f === 'recently_updated') {
     // updated in last 24h
     const diffMs = Date.now() - new Date(s.hiring.updatedAt).getTime();
@@ -92,16 +99,90 @@ function matchesFilter(s: HiringReportSummary, f: FilterId): boolean {
 // ─── Main page ────────────────────────────────────────────────
 const ScreeningReports: React.FC = () => {
   const navigate = useNavigate();
-  const hirings = useHirings();
-  const candidates = useCandidates();
+  const { dispatch } = useAppStore();
 
+  const [summaries, setSummaries] = useState<HiringReportSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterId>('all');
 
-  const summaries = useMemo(
-    () => hirings.map(h => buildSummary(h, candidates)),
-    [hirings, candidates]
-  );
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const campaigns = await listCampaigns();
+      const results = await Promise.all(campaigns.map(async campaign => {
+        const [candidateResult, screeningResult] = await Promise.allSettled([
+          listCampaignCandidates(campaign.id),
+          listCampaignDocumentScreenings(campaign.id),
+        ]);
+        return { campaign, candidateResult, screeningResult };
+      }));
+      if (cancelled) return;
+
+      const warnings: string[] = [];
+      const rows = results.map(({ campaign, candidateResult, screeningResult }) => {
+        const hiring: Hiring = {
+          id: campaign.id,
+          title: campaign.title,
+          location: '—',
+          employmentType: 'full_time',
+          status: screeningResult.status === 'fulfilled' &&
+            screeningResult.value.some(item => item.match_score !== null) ? 'screened' : 'screening',
+          candidateCount: 0,
+          contacted: 0,
+          connected: 0,
+          interested: 0,
+          shortlisted: 0,
+          candidateIds: [],
+          createdAt: campaign.created_at,
+          backendCampaign: true,
+          aiRecruiterId: campaign.agent_id || undefined,
+          updatedAt: campaign.updated_at || campaign.created_at,
+        };
+        const apiCandidates = candidateResult.status === 'fulfilled' ? candidateResult.value : [];
+        const screenings = screeningResult.status === 'fulfilled' ? screeningResult.value : [];
+        if (candidateResult.status === 'rejected') {
+          warnings.push(`${campaign.title}: candidate list failed${candidateResult.reason instanceof Error ? ` (${candidateResult.reason.message})` : ''}.`);
+        }
+        if (screeningResult.status === 'rejected') {
+          warnings.push(`${campaign.title}: document screenings failed${screeningResult.reason instanceof Error ? ` (${screeningResult.reason.message})` : ''}.`);
+        }
+        const screeningByCandidateId = new Map(screenings.map(item => [item.candidate_id, item]));
+        const mapped = apiCandidates.map(candidate =>
+          mapCampaignCandidate(candidate, screeningByCandidateId.get(candidate.id), campaign.title),
+        );
+        if (candidateResult.status === 'fulfilled' && mapped.length > 0) {
+          dispatch({ type: 'ADD_CANDIDATES', payload: { hiringId: campaign.id, candidates: mapped } });
+        }
+        const summary = buildSummary(
+          hiring,
+          mapped,
+          candidateResult.status === 'fulfilled',
+          screeningResult.status === 'fulfilled'
+            ? screeningResult.value.filter(item => item.match_score !== null).length
+            : null,
+          screeningResult.status === 'fulfilled'
+            ? screeningResult.value.filter(item => {
+              if (item.match_score === null) return false;
+              const score = item.match_score <= 1 ? item.match_score * 100 : item.match_score;
+              return score >= 80;
+            }).length
+            : null,
+        );
+        return summary;
+      });
+      setSummaries(rows);
+      setLoadError(warnings.join(' '));
+      setLoading(false);
+    };
+    void load().catch(error => {
+      if (cancelled) return;
+      setLoadError(error instanceof Error ? error.message : 'Failed to load screening reports.');
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [dispatch]);
 
   const filtered = useMemo(() => {
     return summaries.filter(s => {
@@ -114,10 +195,12 @@ const ScreeningReports: React.FC = () => {
   }, [summaries, search, activeFilter]);
 
   // Aggregate header stats
-  const totalCandidates = summaries.reduce((a, s) => a + s.totalCandidates, 0);
-  const totalResumeScreened = summaries.reduce((a, s) => a + s.resumeScreened, 0);
-  const totalCallScreened = summaries.reduce((a, s) => a + s.callScreened, 0);
-  const totalNeedsReview = summaries.reduce((a, s) => a + s.needsReview, 0);
+  const totalCandidates = summaries.every(s => s.totalCandidates !== null)
+    ? summaries.reduce((a, s) => a + (s.totalCandidates ?? 0), 0) : null;
+  const totalResumeScreened = summaries.every(s => s.resumeScreened !== null)
+    ? summaries.reduce((a, s) => a + (s.resumeScreened ?? 0), 0) : null;
+  const totalCallScreened = null;
+  const totalNeedsReview = null;
 
   return (
     <div className="page-content animate-fade-in">
@@ -127,34 +210,47 @@ const ScreeningReports: React.FC = () => {
         <div className="page-header__text">
           <h1 className="page-header__title">Screening Reports</h1>
           <p className="page-header__subtitle">
-            AI screening results across all hiring campaigns — resume and call assessments.
+            Resume-screening results across all campaigns.
           </p>
         </div>
       </div>
+
+      {(loading || loadError) && (
+        <div role={loadError ? 'alert' : 'status'} style={{
+          display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px',
+          marginBottom: '14px', borderRadius: 'var(--radius-md)',
+          background: loadError ? 'var(--status-warning-bg)' : 'var(--bg-subtle)',
+          color: loadError ? 'var(--status-warning-text)' : 'var(--text-secondary)',
+          fontSize: 'var(--font-size-sm)',
+        }}>
+          {loading && <Loader2 size={14} className="spin" />}
+          {loading ? 'Loading campaigns and screening results…' : loadError}
+        </div>
+      )}
 
       {/* ── Summary metric row ── */}
       <div className="metrics-row" style={{ marginBottom: '20px' }}>
         <div className="metric-tile">
           <div className="metric-tile__header"><span>TOTAL CANDIDATES</span></div>
-          <div className="metric-tile__value">{totalCandidates}</div>
+          <div className="metric-tile__value">{totalCandidates ?? '—'}</div>
           <span className="metric-tile__sub">Across {summaries.length} campaigns</span>
         </div>
         <div className="metric-tile">
           <div className="metric-tile__header"><span>RESUME SCREENED</span></div>
-          <div className="metric-tile__value">{totalResumeScreened}</div>
+          <div className="metric-tile__value">{totalResumeScreened ?? '—'}</div>
           <span className="metric-tile__sub">JD compatibility evaluated</span>
         </div>
         <div className="metric-tile">
           <div className="metric-tile__header"><span>CALL SCREENED</span></div>
-          <div className="metric-tile__value">{totalCallScreened}</div>
-          <span className="metric-tile__sub">AI voice assessment complete</span>
+          <div className="metric-tile__value">{totalCallScreened ?? '—'}</div>
+          <span className="metric-tile__sub">Not available from campaign screening APIs</span>
         </div>
         <div className="metric-tile">
           <div className="metric-tile__header"><span>NEEDS REVIEW</span></div>
-          <div className="metric-tile__value" style={{ color: totalNeedsReview > 0 ? 'var(--status-warning-text)' : undefined }}>
-            {totalNeedsReview}
+          <div className="metric-tile__value" style={{ color: totalNeedsReview !== null && totalNeedsReview > 0 ? 'var(--status-warning-text)' : undefined }}>
+            {totalNeedsReview ?? '—'}
           </div>
-          <span className="metric-tile__sub">Assessment done, decision pending</span>
+          <span className="metric-tile__sub">Not available from campaign screening APIs</span>
         </div>
       </div>
 
@@ -186,10 +282,17 @@ const ScreeningReports: React.FC = () => {
             <button
               key={f.id}
               onClick={() => setActiveFilter(f.id)}
+              disabled={f.id === 'completed' || f.id === 'needs_review'}
+              title={f.id === 'completed' || f.id === 'needs_review'
+                ? 'Campaign lifecycle and call-review data are not included in the available campaign APIs.'
+                : undefined}
               style={{
                 padding: '5px 14px', borderRadius: 'var(--radius-full)',
                 fontSize: 'var(--font-size-xs)', fontWeight: 500,
-                border: '1px solid', cursor: 'pointer', transition: 'all var(--transition-fast)',
+                border: '1px solid',
+                cursor: f.id === 'completed' || f.id === 'needs_review' ? 'not-allowed' : 'pointer',
+                opacity: f.id === 'completed' || f.id === 'needs_review' ? 0.55 : 1,
+                transition: 'all var(--transition-fast)',
                 borderColor: activeFilter === f.id ? 'var(--brand-primary)' : 'var(--border-default)',
                 background: activeFilter === f.id ? 'var(--brand-primary-light)' : 'var(--bg-white)',
                 color: activeFilter === f.id ? 'var(--brand-primary)' : 'var(--text-secondary)',
@@ -269,7 +372,7 @@ const HiringReportRow: React.FC<{
             {hiring.title}
           </span>
           <HiringStatusBadge status={hiring.status} />
-          {s.needsReview > 0 && (
+          {s.needsReview !== null && s.needsReview > 0 && (
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: '4px',
               padding: '1px 8px', borderRadius: 'var(--radius-full)',
@@ -301,12 +404,12 @@ const HiringReportRow: React.FC<{
   );
 };
 
-const StatChip: React.FC<{ icon: React.ReactNode; label: string; value: number; color?: string }> = ({
+const StatChip: React.FC<{ icon: React.ReactNode; label: string; value: number | null; color?: string }> = ({
   icon, label, value, color,
 }) => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', minWidth: '44px' }}>
     <span style={{ fontSize: 'var(--font-size-md)', fontWeight: 700, color: color ?? 'var(--text-primary)' }}>
-      {value}
+      {value ?? '—'}
     </span>
     <div style={{ display: 'flex', alignItems: 'center', gap: '3px', color: 'var(--text-tertiary)' }}>
       {icon}

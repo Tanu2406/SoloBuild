@@ -6,9 +6,17 @@ import type { ChatMessageData } from './types';
 export function ChatWindow({
   messages,
   onSubmit,
+  onActionTrigger,
+  isSending,
+  isLoadingHistory,
+  historyError,
 }: {
   messages: ChatMessageData[];
   onSubmit: (message: string) => void;
+  onActionTrigger: (message: string) => void;
+  isSending: boolean;
+  isLoadingHistory: boolean;
+  historyError: string;
 }) {
   const messagesRef = useRef<HTMLDivElement>(null);
 
@@ -29,14 +37,19 @@ export function ChatWindow({
               <p>Tell me what you need help with, from HR tasks and hiring workflows to interviews and team updates.</p>
             </div>
           )}
-          {messages.map(message => <ChatMessage key={message.id} message={message} />)}
+          {messages.map(message => (
+            <ChatMessage key={message.id} message={message} onActionTrigger={onActionTrigger} />
+          ))}
+          {isLoadingHistory && <div className="chatbot-window__loading" role="status">Loading conversation…</div>}
+          {historyError && <div className="chatbot-window__loading" role="alert">{historyError}</div>}
+          {isSending && <div className="chatbot-window__loading" role="status">Rollo AI is thinking…</div>}
         </div>
       </div>
       <div className="chatbot-window__footer">
         <div className="chatbot-window__composer-wrap">
-          <ChatComposer onSubmit={onSubmit} />
+          <ChatComposer onSubmit={onSubmit} disabled={isSending || isLoadingHistory} />
           <p className="chatbot-window__notice">
-            Demo responses are generated for this session. No connected tools are accessed.
+            Rollo AI can answer questions and take supported actions in your hiring workspace.
           </p>
         </div>
       </div>

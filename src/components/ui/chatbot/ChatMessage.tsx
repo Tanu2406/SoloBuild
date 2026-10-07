@@ -1,7 +1,14 @@
 import { AIActivity } from './AIActivity';
 import type { ChatMessageData } from './types';
+import { ChatActionRenderer } from './ChatActionRenderer';
 
-export function ChatMessage({ message }: { message: ChatMessageData }) {
+export function ChatMessage({
+  message,
+  onActionTrigger,
+}: {
+  message: ChatMessageData;
+  onActionTrigger: (text: string) => void;
+}) {
   if (message.role === 'user') {
     return (
       <div className="chatbot-message chatbot-message--user">
@@ -27,6 +34,9 @@ export function ChatMessage({ message }: { message: ChatMessageData }) {
           </div>
         )}
         {message.activity && <AIActivity activity={message.activity} />}
+        {message.uiAction && (
+          <ChatActionRenderer action={message.uiAction} onActionTrigger={onActionTrigger} />
+        )}
       </div>
     </div>
   );

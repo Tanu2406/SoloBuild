@@ -79,6 +79,7 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...seedData, initialized: true };
 
     case 'CREATE_HIRING':
+      if (state.hirings.some(hiring => hiring.id === action.payload.id)) return state;
       return { ...state, hirings: [...state.hirings, action.payload] };
 
     case 'UPDATE_HIRING': {
@@ -99,9 +100,15 @@ function reducer(state: AppState, action: Action): AppState {
 
     case 'ADD_CANDIDATES': {
       const { hiringId, candidates: newCandidates } = action.payload;
+      const updatedCandidates = newCandidates.map(candidate => {
+        const existing = state.candidates.find(current => current.id === candidate.id);
+        return existing
+          ? { ...existing, ...candidate, status: existing.status, isFavorite: existing.isFavorite }
+          : candidate;
+      });
       const merged = [
         ...state.candidates.filter(c => c.hiringId !== hiringId),
-        ...newCandidates,
+        ...updatedCandidates,
       ];
       const updatedHirings = state.hirings.map(h => {
         if (h.id !== hiringId) return h;
@@ -123,8 +130,13 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, candidates, hirings };
     }
 
-    case 'CREATE_RECRUITER':
+    case 'CREATE_RECRUITER': {
+      const exists = state.recruiters.some(r => r.id === action.payload.id);
+      if (exists) {
+        return { ...state, recruiters: state.recruiters.map(r => r.id === action.payload.id ? { ...r, ...action.payload } : r) };
+      }
       return { ...state, recruiters: [...state.recruiters, action.payload] };
+    }
 
     case 'UPDATE_RECRUITER':
       return {

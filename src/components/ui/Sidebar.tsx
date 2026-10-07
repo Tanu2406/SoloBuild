@@ -13,11 +13,15 @@ import {
   MessageSquare,
   Plus,
   Settings,
+  Trash2,
   User,
   Users,
   X,
 } from 'lucide-react';
 import { useHirings, useCandidates, useInterviews } from '../../store/appStore';
+import { useAuth } from '../../context/AuthContext';
+import { deleteChatSession } from '../../services/chatService';
+import { useToast } from './Toast';
 
 interface NavItem {
   path: string;
@@ -29,13 +33,13 @@ interface RecentChatSummary {
   id: string;
   title: string;
   updatedAt: number;
-  isDemo?: boolean;
 }
 
 interface SidebarProps {
   onNewChat: () => void;
   onNavigate: () => void;
   onSelectChat: (chatId: string) => void;
+  onDeleteChat: (chatId: string) => void;
   recentChats: RecentChatSummary[];
   selectedChatId: string | null;
 }
@@ -335,16 +339,8 @@ const solutionSubmenus: Record<string, { routePrefix: string; items: { id: strin
   },
 };
 
-const demoRecentChats: RecentChatSummary[] = [
-  { id: 'demo-candidate-screening', title: 'Candidate screening help', updatedAt: 3, isDemo: true },
-  { id: 'demo-hiring-pipeline', title: 'Hiring pipeline update', updatedAt: 2, isDemo: true },
-  { id: 'demo-interview-scheduling', title: 'Interview scheduling', updatedAt: 1, isDemo: true },
-  { id: 'demo-resume-review', title: 'Resume review', updatedAt: 0, isDemo: true },
-  { id: 'demo-candidate-followup', title: 'Candidate follow-up', updatedAt: -1, isDemo: true },
-];
-
-function relativeTime(timestamp: number, isDemo = false) {
-  if (isDemo) return 'Sample';
+function relativeTime(timestamp: number) {
+  if (!timestamp) return '';
   const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
   if (minutes < 1) return 'now';
   if (minutes < 60) return `${minutes}m ago`;
@@ -357,9 +353,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNewChat,
   onNavigate,
   onSelectChat,
+  onDeleteChat,
   recentChats,
   selectedChatId,
 }) => {
+  const { logout, user } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -367,6 +366,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [profileOpen, setProfileOpen] = useState(false);
   const [selectedContextId, setSelectedContextId] = useState<string | null>(null);
   const [contextResetPath, setContextResetPath] = useState<string | null>(null);
+  const [deletingChatIds, setDeletingChatIds] = useState<Set<string>>(() => new Set());
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     hr: false,
     sales: false,
@@ -385,9 +385,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ['interested', 'connected', 'shortlisted'].includes(candidate.status) &&
     !['interview_scheduled', 'interview_completed', 'hired'].includes(candidate.status)
   ).length;
-  const recentChatIds = new Set(recentChats.map((chat) => chat.id));
-  const chats = [...recentChats, ...demoRecentChats.filter((chat) => !recentChatIds.has(chat.id))];
-  const visibleChats = recentExpanded ? chats : chats.slice(0, 3);
+  const visibleChats = recentExpanded ? recentChats : recentChats.slice(0, 3);
   const routeContextId = pathname.startsWith('/hiring') ||
     ['/candidates', '/screening-reports', '/recruiters', '/interviews', '/activity'].some((path) => pathname.startsWith(path))
     ? 'talent-acquisition'
@@ -424,6 +422,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onNavigate();
     setMobileOpen(false);
     navigate(path);
+  };
+
+  const handleDeleteChat = async (chatId: string) => {
+    if (deletingChatIds.has(chatId)) return;
+    setDeletingChatIds(current => new Set(current).add(chatId));
+    try {
+      await deleteChatSession(chatId);
+      onDeleteChat(chatId);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Conversation could not be deleted.', 'error');
+    } finally {
+      setDeletingChatIds(current => {
+        const next = new Set(current);
+        next.delete(chatId);
+        return next;
+      });
+    }
   };
 
   return (
@@ -491,24 +506,41 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
             <div className="sidebar__recent-list">
               {visibleChats.map((chat) => (
-                <button
+                <div
                   key={chat.id}
-                  type="button"
-                  className={`sidebar__recent-chat${selectedChatId === chat.id ? ' sidebar__recent-chat--active' : ''}${chat.isDemo ? ' sidebar__recent-chat--demo' : ''}`}
-                  title={chat.title}
-                  onClick={() => {
-                    onSelectChat(chat.id);
-                    setMobileOpen(false);
-                  }}
+                  className={`sidebar__recent-chat-row${selectedChatId === chat.id ? ' sidebar__recent-chat-row--active' : ''}`}
                 >
-                  <span className="sidebar__recent-title">{chat.title}</span>
-                  <span className="sidebar__recent-meta">
-                    <MessageSquare size={12} />
-                    <span>{chat.isDemo ? 'Talent Acquisition' : 'Chat'}</span>
-                    <span>{relativeTime(chat.updatedAt, chat.isDemo)}</span>
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    className="sidebar__recent-chat"
+                    title={chat.title}
+                    onClick={() => {
+                      onSelectChat(chat.id);
+                      setMobileOpen(false);
+                    }}
+                  >
+                    <span className="sidebar__recent-title">{chat.title}</span>
+                    <span className="sidebar__recent-meta">
+                      <MessageSquare size={12} />
+                      <span>Chat</span>
+                      <span>{relativeTime(chat.updatedAt)}</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="sidebar__recent-delete"
+                    aria-label={`Delete chat: ${chat.title}`}
+                    title="Delete chat"
+                    disabled={deletingChatIds.has(chat.id)}
+                    onClick={() => { void handleDeleteChat(chat.id); }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               ))}
+              {recentChats.length === 0 && (
+                <span style={{ padding: '8px 10px', color: '#94a3b8', fontSize: 11 }}>No conversations yet</span>
+              )}
             </div>
           </section>
 
@@ -757,10 +789,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               aria-label="TalentCorp profile menu"
               onClick={() => setProfileOpen((open) => !open)}
             >
-              <span className="sidebar__workspace-avatar">TC</span>
+              <span className="sidebar__workspace-avatar">{user?.name ? user.name[0].toUpperCase() : 'TC'}</span>
               <span className="sidebar__workspace-info">
-                <span className="sidebar__workspace-name">TalentCorp</span>
-                <span className="sidebar__workspace-email">admin@talentcorp.com</span>
+                <span className="sidebar__workspace-name">{user?.name || 'TalentCorp'}</span>
+                <span className="sidebar__workspace-email">{user?.email || 'admin@talentcorp.com'}</span>
               </span>
               <ChevronDown size={13} className={profileOpen ? 'sidebar__profile-chevron sidebar__profile-chevron--open' : 'sidebar__profile-chevron'} />
             </button>
@@ -773,7 +805,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <User size={14} /> Profile
                 </button>
                 <div className="sidebar__profile-divider" />
-                <button type="button" className="sidebar__profile-signout" onClick={() => setProfileOpen(false)}>
+                <button type="button" className="sidebar__profile-signout" onClick={() => { setProfileOpen(false); logout(); }}>
                   <LogOut size={14} /> Sign out
                 </button>
               </div>
